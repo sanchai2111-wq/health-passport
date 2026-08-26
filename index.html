@@ -260,7 +260,7 @@ const LOGO_B64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPIAAAEECAYAAAAS
 
 /* ===================== data layer — Google Sheets backend ===================== */
 // วาง Web app URL จาก Google Apps Script (ลงท้ายด้วย /exec) แทนที่ข้อความด้านล่างนี้
-const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbwFBmyNqSljFa0xwuX890hKqo_hL4qn1Bc77eTH_rlsWZ8PSCIObsk3KhrkAFarvFiORw/exec";
+const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzQWEYU2f-tMDdCV15zg6l-OcMN0xo8NIl4GjIR6HtjlCD4wQ05wZJDDEyEQWHVbYo89w/exec";
 const DEFAULT_ZONES = [
   {id:'ltc',   name:'ผู้สูงอายุ / LTC',        icon:'👵', hex:'#C97A2B'},
   {id:'kids',  name:'เด็กและเยาวชน',           icon:'🧒', hex:'#C4483A'},
@@ -404,7 +404,7 @@ function renderCover(){
     ${header(false)}
     <div class="page cover">
       <div class="cover-badge"><span><img src="${LOGO_B64}" alt="ตราสัญลักษณ์ กปท."></span></div>
-      <h1>สมุดสุขภาพดิจิทัล</h1>
+      <h1>สมุดพาสปอร์ตตลาดนัดสุขภาพ ดิจิทัล</h1>
       <div class="sub">เดินครบ ${ZONES.length} โซน สะสมตราประทับ รับของที่ระลึก</div>
       <div class="muni">เทศบาลเมืองนอกเมือง</div>
       <div class="role-grid">
