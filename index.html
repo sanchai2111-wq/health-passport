@@ -277,7 +277,9 @@ async function apiGet(params){
   const url = new URL(SHEET_API_URL);
   Object.keys(params).forEach(k=>url.searchParams.set(k, params[k]));
   const res = await fetch(url.toString());
-  return res.json();
+  const data = await res.json();
+  if(data && data.error) throw new Error(data.error); // surface server-side errors instead of pretending success
+  return data;
 }
 async function apiPost(body){
   const res = await fetch(SHEET_API_URL, {
@@ -285,7 +287,9 @@ async function apiPost(body){
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // text/plain avoids a CORS preflight on Apps Script
     body: JSON.stringify(body),
   });
-  return res.json();
+  const data = await res.json();
+  if(data && data.error) throw new Error(data.error);
+  return data;
 }
 
 async function loadZones(){
@@ -305,15 +309,22 @@ async function loadConfig(){
 
 function emptyStamps(){ const o={}; ZONES.forEach(z=>o[z.id]=false); return o; }
 
+// Client-generated UID — no server round trip, no lock queueing at the
+// registration desk. Collision odds are negligible for an event this size.
+function generateLocalUid(){
+  const year = new Date().getFullYear();
+  const t = Date.now().toString(36).toUpperCase().slice(-4);
+  const r = Math.random().toString(36).toUpperCase().slice(2,4);
+  return `KPT${year}-${t}${r}`;
+}
+
 async function nextUid(){
   const r = await apiPost({action:'nextUid'});
   return r.uid;
 }
 async function saveParticipant(p){ await apiPost({action:'saveParticipant', data:p}); }
-async function registerParticipant(name, phone, affil){
-  // one round trip: server issues the UID and appends the row together
-  return await apiPost({action:'registerParticipant', data:{ name, phone, affil, stamps: emptyStamps() }});
-}
+// Fire-and-forget style append — no lock, no row search, cheapest possible write.
+async function appendParticipant(p){ return await apiPost({action:'appendParticipant', data:p}); }
 async function getParticipant(uid){
   if(!uid || !uid.trim()) return null;
   const r = await apiGet({action:'getParticipant', uid: uid.trim().toUpperCase()});
@@ -322,7 +333,7 @@ async function getParticipant(uid){
 async function listParticipants(){
   const r = await apiGet({action:'listParticipants'});
   const out = Array.isArray(r) ? r : [];
-  out.sort((a,b)=> a.uid < b.uid ? -1 : 1);
+  out.sort((a,b)=> (a.registeredAt||'') < (b.registeredAt||'') ? -1 : 1);
   return out;
 }
 function stampCount(p){ return ZONES.filter(z=>p.stamps[z.id]).length; }
@@ -369,10 +380,14 @@ function stopScanner(){
 }
 function goCover(){ stopScanner(); state.view='cover'; state.message=null; render(); }
 
+let zonesLoaded = false, configLoaded = false;
 async function render(){
   if(!apiConfigured()){ return renderSetupNotice(); }
-  await loadZones();
-  await loadConfig();
+  // Zones/PIN rarely change mid-event — fetch once per page load and cache,
+  // instead of re-fetching on every single screen change (this was the main
+  // hidden cost: every navigation was paying for 2 extra network round trips).
+  if(!zonesLoaded){ await loadZones(); zonesLoaded = true; }
+  if(!configLoaded){ await loadConfig(); configLoaded = true; }
   if(state.view==='cover') return renderCover();
   if(state.view==='register') return renderRegister();
   if(state.view==='registered') return renderRegistered();
@@ -445,15 +460,37 @@ async function submitRegister(){
     errBox.innerHTML = `<div class="error-box">กรุณากรอกชื่อ-นามสกุล และเบอร์โทรศัพท์ให้ครบถ้วน</div>`;
     return;
   }
-  errBox.innerHTML = `<div class="hint">กำลังสร้างรหัสประจำตัว...</div>`;
-  const p = await registerParticipant(name, phone, affil);
-  state.view='registered'; state.lastUid = p.uid;
+  // Generate the UID locally and show the QR immediately — no waiting on the
+  // network. The actual save to Google Sheets happens in the background.
+  const p = {
+    uid: generateLocalUid(), name, phone, affil,
+    registeredAt: new Date().toISOString(), stamps: emptyStamps(),
+    redeemed:false, satisfaction:null, votedZone:null,
+  };
+  state.view='registered'; state.lastUid = p.uid; state.pendingParticipant = p;
   render();
+  syncParticipantInBackground(p);
 }
+async function syncParticipantInBackground(p){
+  const el = ()=>document.getElementById('sync-status');
+  if(el()) el().innerHTML = `กำลังบันทึกข้อมูลไปที่ระบบกลาง...`;
+  try{
+    await appendParticipant(p);
+    if(el()) el().innerHTML = `<span style="color:var(--zone-env)">บันทึกข้อมูลเรียบร้อย</span>`;
+  }catch(e){
+    if(el()) el().innerHTML = `<span style="color:var(--danger)">บันทึกไม่สำเร็จ เครือข่ายอาจมีปัญหา — <button class="link-btn" onclick="retrySync()">ลองใหม่</button></span>`;
+  }
+}
+function retrySync(){ if(state.pendingParticipant) syncParticipantInBackground(state.pendingParticipant); }
 
 /* ---------- after registration: show QR + passport ---------- */
 async function renderRegistered(){
-  const p = await getParticipant(state.lastUid);
+  let p;
+  if(state.pendingParticipant && state.pendingParticipant.uid === state.lastUid){
+    p = state.pendingParticipant;
+  } else {
+    p = await getParticipant(state.lastUid);
+  }
   app.innerHTML = `
     ${header(true)}
     <div class="page" id="print-card">
@@ -467,6 +504,7 @@ async function renderRegistered(){
         <div class="pname">${p.name}</div>
         <div class="paffil">${p.affil} · ${p.phone}</div>
       </div>
+      <div id="sync-status" class="hint" style="text-align:center;margin-top:6px;min-height:16px;"></div>
       ${stampRowHtml(p)}
       <div class="toolbar" style="justify-content:center;">
         <button class="btn btn-outline" onclick="printCard()">🖨️ พิมพ์บัตร</button>
@@ -529,6 +567,7 @@ async function doLookup(){
   const p = await getParticipant(uid);
   if(!p){ box.innerHTML = `<div class="error-box">ไม่พบข้อมูลรหัส ${uid.toUpperCase()}</div>`; return; }
   state.lastUid = p.uid;
+  state.pendingParticipant = null;
   state.view='registered';
   render();
 }
@@ -712,7 +751,7 @@ async function renderAdmin(){
 
       <div class="zone-manager">
         <h3>จัดการโซนกิจกรรม (เจ้าหน้าที่ประจำโซน)</h3>
-        <p class="hint" style="margin-top:-4px;">เพิ่ม แก้ไข หรือลบกลุ่ม/โซนกิจกรรมได้ตามการจัดงานจริง — บูธสแกนและบัตรผ่านของผู้เข้าร่วมจะอัปเดตตามทันที</p>
+        <p class="hint" style="margin-top:-4px;">เพิ่ม แก้ไข หรือลบกลุ่ม/โซนกิจกรรมได้ตามการจัดงานจริง — อุปกรณ์เครื่องนี้อัปเดตทันที แต่เครื่องอื่นที่เปิดค้างไว้ต้องกด "รีเฟรชหน้า" หรือเปิดลิงก์ใหม่จึงจะเห็นการเปลี่ยนแปลง (เพื่อความเร็ว แอปโหลดรายชื่อโซนแค่ครั้งแรกที่เปิดหน้า)</p>
         <div id="zone-list">
           ${ZONES.map(z=>`
             <div class="zone-row">
