@@ -303,7 +303,7 @@ async function persistZones(){ await apiPost({action:'saveZones', data:ZONES}); 
 async function loadConfig(){
   try{
     const c = await apiGet({action:'getConfig'});
-    if(c && c.adminPin) ADMIN_PIN = c.adminPin;
+    if(c && c.adminPin !== undefined && c.adminPin !== '') ADMIN_PIN = String(c.adminPin).trim();
   }catch(e){}
 }
 
@@ -404,7 +404,7 @@ function renderCover(){
     ${header(false)}
     <div class="page cover">
       <div class="cover-badge"><span><img src="${LOGO_B64}" alt="ตราสัญลักษณ์ กปท."></span></div>
-      <h1>สมุดพาสปอร์ตตลาดนัดสุขภาพ ดิจิทัล</h1>
+      <h1>สมุดพาสปอร์ตตลาดนัดสุขภาพดิจิทัล</h1>
       <div class="sub">เดินครบ ${ZONES.length} โซน สะสมตราประทับ รับของที่ระลึก</div>
       <div class="muni">เทศบาลเมืองนอกเมือง</div>
       <div class="role-grid">
@@ -727,7 +727,7 @@ function renderAdminGate(){
 }
 function tryPin(){
   const v = document.getElementById('pin').value.trim();
-  if(v===ADMIN_PIN){ state.view='admin'; render(); }
+  if(String(v) === String(ADMIN_PIN)){ state.view='admin'; render(); }
   else document.getElementById('pin-err').innerHTML = `<div class="error-box">PIN ไม่ถูกต้อง</div>`;
 }
 async function renderAdmin(){
@@ -735,6 +735,11 @@ async function renderAdmin(){
   const list = await listParticipants();
   const totals = ZONES.map(z=>({...z, count:list.filter(p=>p.stamps[z.id]).length}));
   const complete = list.filter(p=>stampCount(p)===ZONES.length).length;
+  const votedCounts = ZONES.map(z=>({...z, votes:list.filter(p=>p.votedZone===z.id).length}));
+  const totalVotes = votedCounts.reduce((s,z)=>s+z.votes,0);
+  const maxVotes = Math.max(0, ...votedCounts.map(z=>z.votes));
+  const satisfactionVals = list.filter(p=>p.satisfaction).map(p=>Number(p.satisfaction));
+  const avgSatisfaction = satisfactionVals.length ? (satisfactionVals.reduce((a,b)=>a+b,0)/satisfactionVals.length).toFixed(1) : '-';
   app.innerHTML = `
     ${header(true)}
     <div class="page">
@@ -748,6 +753,19 @@ async function renderAdmin(){
       </div>
       <div class="stat-grid">
         ${totals.map(z=>`<div class="stat-card"><div class="stat-num" style="color:${z.hex}">${z.count}</div><div class="stat-lbl"><span class="mini-badge" style="background:${z.hex}"></span>${z.name}</div></div>`).join('')}
+      </div>
+
+      <div class="zone-manager">
+        <h3>🏆 ผลโหวตโครงการยอดเยี่ยม</h3>
+        <p class="hint" style="margin-top:-4px;">รวม ${totalVotes} เสียงโหวต (นับเฉพาะผู้ที่รับของที่ระลึกและโหวตแล้ว) · คะแนนความพึงพอใจเฉลี่ย ${avgSatisfaction} / 5</p>
+        <div>
+          ${votedCounts.slice().sort((a,b)=>b.votes-a.votes).map(z=>`
+            <div class="zone-row">
+              <span class="mini-badge" style="background:${z.hex}"></span>
+              <span class="zr-name">${z.icon} ${z.name} ${z.votes===maxVotes && maxVotes>0 ? '🏆' : ''}</span>
+              <span class="zr-actions" style="font-family:'Mitr';font-weight:600;color:var(--ink);">${z.votes} เสียง</span>
+            </div>`).join('')}
+        </div>
       </div>
 
       <div class="zone-manager">
