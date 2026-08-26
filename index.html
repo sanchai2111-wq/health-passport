@@ -298,7 +298,7 @@ async function loadZones(){
     ZONES = (Array.isArray(r) && r.length) ? r : DEFAULT_ZONES.map(z=>({...z}));
   }catch(e){ ZONES = DEFAULT_ZONES.map(z=>({...z})); }
 }
-async function persistZones(){ await apiPost({action:'saveZones', data:ZONES}); }
+async function persistZones(){ await apiPost({action:'saveZones', data:ZONES, pin: state.adminPin}); }
 
 async function loadConfig(){
   try{
@@ -331,7 +331,7 @@ async function getParticipant(uid){
   return (r && r.uid) ? r : null;
 }
 async function listParticipants(){
-  const r = await apiGet({action:'listParticipants'});
+  const r = await apiGet({action:'listParticipants', pin: state.adminPin || ''});
   const out = Array.isArray(r) ? r : [];
   out.sort((a,b)=> (a.registeredAt||'') < (b.registeredAt||'') ? -1 : 1);
   return out;
@@ -727,7 +727,7 @@ function renderAdminGate(){
 }
 function tryPin(){
   const v = document.getElementById('pin').value.trim();
-  if(String(v) === String(ADMIN_PIN)){ state.view='admin'; render(); }
+  if(String(v) === String(ADMIN_PIN)){ state.adminPin = v; state.view='admin'; render(); }
   else document.getElementById('pin-err').innerHTML = `<div class="error-box">PIN ไม่ถูกต้อง</div>`;
 }
 async function renderAdmin(){
