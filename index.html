@@ -940,12 +940,15 @@ async function exportCsv(){
 }
 async function doResetZonesProjects(){
   if(!confirm('จะลบโซนและโครงการทั้งหมดที่มีอยู่ แล้วโหลดชุดข้อมูล 8 โซน 26 โครงการใหม่ทับ (ข้อมูลผู้เข้าร่วมงานจะไม่ถูกลบ) ยืนยันหรือไม่?')) return;
-  const r = await apiPost({action:'resetZonesAndProjects', pin: state.adminPin});
-  if(r && r.error){ alert(r.error); return; }
-  zonesLoaded = false; projectsLoaded = false;
-  await loadZones(); zonesLoaded = true;
-  await loadProjects(); projectsLoaded = true;
-  renderAdmin();
+  try{
+    await apiPost({action:'resetZonesAndProjects', pin: state.adminPin});
+    zonesLoaded = false; projectsLoaded = false;
+    await loadZones(); zonesLoaded = true;
+    await loadProjects(); projectsLoaded = true;
+    renderAdmin();
+  }catch(e){
+    alert('โหลดชุดข้อมูลไม่สำเร็จ: ' + ((e&&e.message)||'ไม่ทราบสาเหตุ') + '\n\nถ้าเพิ่งเปลี่ยน PIN ในชีต Config ให้ปิดแท็บนี้ เปิดลิงก์ใหม่ แล้ว login ด้วย PIN ล่าสุดอีกครั้ง');
+  }
 }
 
 function zoneFormHtml(z){
@@ -979,14 +982,14 @@ async function submitZone(id){
   } else {
     ZONES.push({ id:'z'+Date.now().toString(36), name, icon, hex });
   }
-  await persistZones();
-  renderAdmin();
+  try{ await persistZones(); renderAdmin(); }
+  catch(e){ alert('บันทึกไม่สำเร็จ: ' + ((e&&e.message)||'ไม่ทราบสาเหตุ')); }
 }
 async function removeZone(id){
   if(!confirm('ยืนยันลบโซนนี้? ผู้เข้าร่วมที่เคยได้ตราประทับโซนนี้จะยังมีข้อมูลอยู่ แต่โซนนี้จะไม่ปรากฏให้สแกนอีกต่อไป')) return;
   ZONES = ZONES.filter(z=>z.id!==id);
-  await persistZones();
-  renderAdmin();
+  try{ await persistZones(); renderAdmin(); }
+  catch(e){ alert('ลบไม่สำเร็จ: ' + ((e&&e.message)||'ไม่ทราบสาเหตุ')); }
 }
 
 function projectFormHtml(pj){
@@ -1021,14 +1024,14 @@ async function submitProject(code){
     if(PROJECTS.some(x=>x.code===newCode)){ alert('มีรหัสโครงการนี้อยู่แล้ว'); return; }
     PROJECTS.push({ code:newCode, zoneId, name });
   }
-  await persistProjects();
-  renderAdmin();
+  try{ await persistProjects(); renderAdmin(); }
+  catch(e){ alert('บันทึกไม่สำเร็จ: ' + ((e&&e.message)||'ไม่ทราบสาเหตุ')); }
 }
 async function removeProject(code){
   if(!confirm('ยืนยันลบโครงการนี้?')) return;
   PROJECTS = PROJECTS.filter(x=>x.code!==code);
-  await persistProjects();
-  renderAdmin();
+  try{ await persistProjects(); renderAdmin(); }
+  catch(e){ alert('ลบไม่สำเร็จ: ' + ((e&&e.message)||'ไม่ทราบสาเหตุ')); }
 }
 
 render();
