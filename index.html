@@ -260,7 +260,7 @@ const LOGO_B64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPIAAAEECAYAAAAS
 
 /* ===================== data layer — Google Sheets backend ===================== */
 // วาง Web app URL จาก Google Apps Script (ลงท้ายด้วย /exec) แทนที่ข้อความด้านล่างนี้
-const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzQWEYU2f-tMDdCV15zg6l-OcMN0xo8NIl4GjIR6HtjlCD4wQ05wZJDDEyEQWHVbYo89w/exec";
+const SHEET_API_URL = "?action=version";
 const DEFAULT_ZONES = [
   {id:'ltc',   name:'ผู้สูงอายุ / LTC',        icon:'👵', hex:'#C97A2B'},
   {id:'kids',  name:'เด็กและเยาวชน',           icon:'🧒', hex:'#C4483A'},
@@ -268,8 +268,9 @@ const DEFAULT_ZONES = [
   {id:'mental',name:'สุขภาพจิต / นวัตกรรม',    icon:'💡', hex:'#5B4B8A'},
 ];
 let ZONES = [];
+let PROJECTS = [];
 let ADMIN_PIN = '2026';
-const AFFIL = ['อสม.','ชุมชน','หน่วยงานราชการ','ประชาชนทั่วไป'];
+const AFFIL = ['อสม.','ชุมชน','หน่วยงานราชการ','ประชาชนทั่วไป','ผู้รับผิดชอบโครงการ'];
 
 function apiConfigured(){ return SHEET_API_URL && SHEET_API_URL.indexOf('วางลิงก์') === -1; }
 
@@ -299,6 +300,14 @@ async function loadZones(){
   }catch(e){ ZONES = DEFAULT_ZONES.map(z=>({...z})); }
 }
 async function persistZones(){ await apiPost({action:'saveZones', data:ZONES, pin: state.adminPin}); }
+
+async function loadProjects(){
+  try{
+    const r = await apiGet({action:'getProjects'});
+    PROJECTS = Array.isArray(r) ? r : [];
+  }catch(e){ PROJECTS = []; }
+}
+async function persistProjects(){ await apiPost({action:'saveProjects', data:PROJECTS, pin: state.adminPin}); }
 
 async function loadConfig(){
   try{
@@ -380,13 +389,14 @@ function stopScanner(){
 }
 function goCover(){ stopScanner(); state.view='cover'; state.message=null; render(); }
 
-let zonesLoaded = false, configLoaded = false;
+let zonesLoaded = false, configLoaded = false, projectsLoaded = false;
 async function render(){
   if(!apiConfigured()){ return renderSetupNotice(); }
-  // Zones/PIN rarely change mid-event — fetch once per page load and cache,
+  // Zones/Projects/PIN rarely change mid-event — fetch once per page load and cache,
   // instead of re-fetching on every single screen change (this was the main
-  // hidden cost: every navigation was paying for 2 extra network round trips).
+  // hidden cost: every navigation was paying for extra network round trips).
   if(!zonesLoaded){ await loadZones(); zonesLoaded = true; }
+  if(!projectsLoaded){ await loadProjects(); projectsLoaded = true; }
   if(!configLoaded){ await loadConfig(); configLoaded = true; }
   if(state.view==='cover') return renderCover();
   if(state.view==='register') return renderRegister();
@@ -540,7 +550,7 @@ function stampRowHtml(p){
   }).join('');
   let unlock = '';
   if(n===ZONES.length){
-    unlock = `<div class="unlock-box"><div class="t">🎉 ครบทุกโซนแล้ว!</div><div class="d">นำ QR นี้ไปรับของที่ระลึกและร่วมโหวตรางวัลได้ที่จุดลงทะเบียนหลัก</div></div>`;
+    unlock = `<div class="unlock-box"><div class="t">🎉 ครบทุกโซนแล้ว!</div><div class="d">นำ QR นี้ไปรับของที่ระลึกและร่วมโหวตรางวัลได้ที่จุดรับของที่ระลึก</div></div>`;
   }
   return `<div class="stamp-row">${dots}</div><div class="progress-line">สะสมแล้ว ${n} / ${ZONES.length} โซน</div>${unlock}`;
 }
@@ -635,9 +645,84 @@ async function handleScanResult(uid){
   }
   const zone = ZONES.find(z=>z.id===state.zone);
   const already = p.stamps[zone.id];
-  if(!already){ p.stamps[zone.id] = true; await saveParticipant(p); }
-  showStampToast(true, already ? `${p.name} — เคยประทับตราโซนนี้แล้ว` : `${p.name} — ประทับตรา “${zone.name}” สำเร็จ`, zone, p);
-  setTimeout(()=>{scanLock=false;}, 1600);
+  if(already){
+    showStampToast(true, `${p.name} — เคยประทับตราโซนนี้แล้ว`, zone, p);
+    setTimeout(()=>{scanLock=false;}, 1600);
+    return;
+  }
+  // New visit to this zone — ask which project impressed them most before stamping.
+  pauseScanner();
+  renderProjectPicker(p, zone);
+}
+
+function pauseScanner(){ try{ if(state.html5qr) state.html5qr.pause(true); }catch(e){} }
+function resumeScannerAfterVote(){ try{ if(state.html5qr) state.html5qr.resume(); }catch(e){} scanLock = false; }
+
+function renderProjectPicker(p, zone){
+  const projects = PROJECTS.filter(pj=>pj.zoneId===zone.id);
+  const overlay = document.createElement('div');
+  overlay.className = 'stamp-overlay';
+  overlay.id = 'project-picker-overlay';
+  overlay.innerHTML = `
+    <div class="page" style="max-width:420px;width:92%;max-height:80vh;overflow:auto;">
+      <div class="eyebrow">${zone.icon} ${zone.name}</div>
+      <h2 style="font-size:18px;">${p.name} ประทับใจโครงการไหนที่สุด?</h2>
+      <p class="lead" style="font-size:12.5px;">เลือก 1 โครงการแทนผู้เข้าร่วมงาน แล้วจึงประทับตรา</p>
+      <div>
+        ${projects.length ? projects.map(pj=>`
+          <button class="btn btn-outline btn-block" style="text-align:left;justify-content:flex-start;margin-top:8px;" onclick="confirmStampVote('${p.uid}','${zone.id}','${pj.code}')">
+            <b>${pj.code}</b>&nbsp; ${pj.name}
+          </button>`).join('') : '<div class="hint">โซนนี้ยังไม่มีโครงการย่อยตั้งไว้ — จะประทับตราโดยไม่โหวตโครงการ</div>'}
+      </div>
+      ${!projects.length ? `<button class="btn btn-gold btn-block" onclick="confirmStampVote('${p.uid}','${zone.id}','')">ประทับตราต่อ</button>` : ''}
+      <button class="btn btn-outline btn-block" style="margin-top:14px;" onclick="cancelProjectPicker()">ยกเลิก (ไม่ประทับตรา)</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+function cancelProjectPicker(){
+  const el = document.getElementById('project-picker-overlay');
+  if(el) el.remove();
+  resumeScannerAfterVote();
+}
+async function confirmStampVote(uid, zoneId, projectCode){
+  const el = document.getElementById('project-picker-overlay');
+  if(el) el.remove();
+  const zone = ZONES.find(z=>z.id===zoneId);
+  try{
+    const r = await apiPost({action:'stampZone', uid, zoneId, projectCode});
+    showStampToast(true, r.alreadyStamped ? `เคยประทับตราโซนนี้แล้ว` : `ประทับตรา "${zone.name}" สำเร็จ`, zone, r.participant);
+    resumeScannerAfterVote();
+  }catch(e){
+    showStampError(uid, zoneId, projectCode, (e&&e.message)||'ไม่ทราบสาเหตุ');
+  }
+}
+function showStampError(uid, zoneId, projectCode, message){
+  const overlay = document.createElement('div');
+  overlay.className = 'stamp-overlay';
+  overlay.id = 'stamp-error-overlay';
+  overlay.innerHTML = `
+    <div class="page" style="max-width:360px;width:90%;text-align:center;">
+      <div style="font-size:32px;">⚠️</div>
+      <h2 style="font-size:16px;">บันทึกไม่สำเร็จ</h2>
+      <p class="lead" style="font-size:13px;">${message}</p>
+      <div class="toolbar" style="justify-content:center;">
+        <button class="btn btn-gold" onclick="retryStampVote('${uid}','${zoneId}','${projectCode}')">ลองใหม่</button>
+        <button class="btn btn-outline" onclick="dismissStampError()">ปิด (ไม่ประทับตรา)</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+function dismissStampError(){
+  const el = document.getElementById('stamp-error-overlay');
+  if(el) el.remove();
+  resumeScannerAfterVote();
+}
+async function retryStampVote(uid, zoneId, projectCode){
+  const el = document.getElementById('stamp-error-overlay');
+  if(el) el.remove();
+  await confirmStampVote(uid, zoneId, projectCode);
 }
 
 function showStampToast(ok, text, zone, p){
@@ -664,7 +749,7 @@ function renderRedeem(){
     <div class="page">
       <div class="eyebrow">จุดรับของที่ระลึก</div>
       <h2>ตรวจสิทธิและรับของรางวัล</h2>
-      <p class="lead">กรอกหรือสแกนรหัสประจำตัว เพื่อตรวจสอบว่าสะสมครบ 4 โซนแล้วหรือไม่</p>
+      <p class="lead">กรอกหรือสแกนรหัสประจำตัว เพื่อตรวจสอบว่าสะสมครบทุกโซนแล้วหรือไม่</p>
       <label>รหัสประจำตัว</label>
       <div class="search-row">
         <input type="text" id="redeem-uid" placeholder="KPT2026-001" style="text-transform:uppercase;">
@@ -696,8 +781,6 @@ async function doRedeemCheck(){
       <option value="5">ดีมาก (5)</option><option value="4">ดี (4)</option>
       <option value="3">ปานกลาง (3)</option><option value="2">พอใช้ (2)</option><option value="1">ควรปรับปรุง (1)</option>
     </select>
-    <label>โหวตโครงการยอดเยี่ยมประจำงาน</label>
-    <select id="vote-zone">${ZONES.map(z=>`<option value="${z.id}">${z.name}</option>`).join('')}</select>
     <button class="btn btn-gold btn-block" onclick="finishRedeem('${p.uid}')">ยืนยันรับของที่ระลึก</button>
   `;
 }
@@ -705,7 +788,6 @@ async function finishRedeem(uid){
   const p = await getParticipant(uid);
   p.redeemed = true;
   p.satisfaction = document.getElementById('satis').value;
-  p.votedZone = document.getElementById('vote-zone').value;
   await saveParticipant(p);
   document.getElementById('redeem-result').innerHTML = `<div class="ok-box">🎁 บันทึกสำเร็จ! มอบของที่ระลึกให้ ${p.name} ได้เลย</div>`;
 }
@@ -735,9 +817,13 @@ async function renderAdmin(){
   const list = await listParticipants();
   const totals = ZONES.map(z=>({...z, count:list.filter(p=>p.stamps[z.id]).length}));
   const complete = list.filter(p=>stampCount(p)===ZONES.length).length;
-  const votedCounts = ZONES.map(z=>({...z, votes:list.filter(p=>p.votedZone===z.id).length}));
-  const totalVotes = votedCounts.reduce((s,z)=>s+z.votes,0);
-  const maxVotes = Math.max(0, ...votedCounts.map(z=>z.votes));
+  const zoneOf = (zid)=> ZONES.find(z=>z.id===zid) || {hex:'#999', icon:''};
+  const voteTally = PROJECTS.map(pj=>({
+    ...pj,
+    votes: list.filter(p=>p.votes && p.votes[pj.zoneId]===pj.code).length,
+  }));
+  const totalVotes = voteTally.reduce((s,pj)=>s+pj.votes,0);
+  const maxVotes = Math.max(0, ...voteTally.map(pj=>pj.votes));
   const satisfactionVals = list.filter(p=>p.satisfaction).map(p=>Number(p.satisfaction));
   const avgSatisfaction = satisfactionVals.length ? (satisfactionVals.reduce((a,b)=>a+b,0)/satisfactionVals.length).toFixed(1) : '-';
   app.innerHTML = `
@@ -747,7 +833,7 @@ async function renderAdmin(){
       <h2>ภาพรวมงานมหกรรมตลาดนัดสุขภาพ</h2>
       <div class="stat-grid">
         <div class="stat-card"><div class="stat-num">${list.length}</div><div class="stat-lbl">ผู้ลงทะเบียนทั้งหมด</div></div>
-        <div class="stat-card"><div class="stat-num">${complete}</div><div class="stat-lbl">สะสมครบ 4 โซน</div></div>
+        <div class="stat-card"><div class="stat-num">${complete}</div><div class="stat-lbl">สะสมครบทุกโซน</div></div>
         <div class="stat-card"><div class="stat-num">${list.filter(p=>p.redeemed).length}</div><div class="stat-lbl">รับของที่ระลึกแล้ว</div></div>
         <div class="stat-card"><div class="stat-num">${list.length ? Math.round(complete/list.length*100) : 0}%</div><div class="stat-lbl">อัตราสำเร็จครบโซน</div></div>
       </div>
@@ -756,15 +842,18 @@ async function renderAdmin(){
       </div>
 
       <div class="zone-manager">
-        <h3>🏆 ผลโหวตโครงการยอดเยี่ยม</h3>
-        <p class="hint" style="margin-top:-4px;">รวม ${totalVotes} เสียงโหวต (นับเฉพาะผู้ที่รับของที่ระลึกและโหวตแล้ว) · คะแนนความพึงพอใจเฉลี่ย ${avgSatisfaction} / 5</p>
-        <div>
-          ${votedCounts.slice().sort((a,b)=>b.votes-a.votes).map(z=>`
+        <h3>🏆 ผลโหวตโครงการยอดเยี่ยม (รายโครงการ)</h3>
+        <p class="hint" style="margin-top:-4px;">รวม ${totalVotes} เสียงโหวต (นับตอนสแตมป์ที่บูธแต่ละโซน) · คะแนนความพึงพอใจเฉลี่ย ${avgSatisfaction} / 5</p>
+        <div style="max-height:320px;overflow:auto;">
+          ${voteTally.slice().sort((a,b)=>b.votes-a.votes).map(pj=>{
+            const z = zoneOf(pj.zoneId);
+            return `
             <div class="zone-row">
               <span class="mini-badge" style="background:${z.hex}"></span>
-              <span class="zr-name">${z.icon} ${z.name} ${z.votes===maxVotes && maxVotes>0 ? '🏆' : ''}</span>
-              <span class="zr-actions" style="font-family:'Mitr';font-weight:600;color:var(--ink);">${z.votes} เสียง</span>
-            </div>`).join('')}
+              <span class="zr-name" style="font-size:12.5px;"><b>${pj.code}</b> ${pj.name} ${pj.votes===maxVotes && maxVotes>0 ? '🏆' : ''}</span>
+              <span class="zr-actions" style="font-family:'Mitr';font-weight:600;color:var(--ink);">${pj.votes}</span>
+            </div>`;
+          }).join('') || '<div class="hint">ยังไม่มีโครงการตั้งไว้</div>'}
         </div>
       </div>
 
@@ -784,6 +873,29 @@ async function renderAdmin(){
         </div>
         <div id="zone-form-area">
           <button class="btn btn-outline" style="margin-top:12px;" onclick="openAddZone()">+ เพิ่มโซนใหม่</button>
+        </div>
+        <button class="btn btn-outline" style="margin-top:14px;" onclick="doResetZonesProjects()">🔄 โหลดชุดข้อมูล 8 โซน 26 โครงการ (ตามมติที่ประชุม)</button>
+      </div>
+
+      <div class="zone-manager">
+        <h3>จัดการโครงการย่อยในแต่ละโซน (${PROJECTS.length} โครงการ)</h3>
+        <p class="hint" style="margin-top:-4px;">โครงการเหล่านี้จะให้เจ้าหน้าที่ประจำโซนเลือกโหวตแทนผู้เข้าร่วมงานตอนสแกนประทับตรา</p>
+        <div id="project-list" style="max-height:280px;overflow:auto;">
+          ${ZONES.map(z=>`
+            <div style="margin-top:10px;">
+              <div style="font-family:'Mitr';font-weight:600;font-size:13px;color:${z.hex};">${z.icon} ${z.name}</div>
+              ${PROJECTS.filter(pj=>pj.zoneId===z.id).map(pj=>`
+                <div class="zone-row">
+                  <span class="zr-name" style="font-size:12.5px;"><b>${pj.code}</b> ${pj.name}</span>
+                  <span class="zr-actions">
+                    <button class="link-btn" onclick="openEditProject('${pj.code}')">แก้ไข</button>
+                    <button class="link-btn danger" onclick="removeProject('${pj.code}')">ลบ</button>
+                  </span>
+                </div>`).join('') || '<div class="hint" style="margin-left:6px;">ยังไม่มีโครงการในโซนนี้</div>'}
+            </div>`).join('')}
+        </div>
+        <div id="project-form-area">
+          <button class="btn btn-outline" style="margin-top:12px;" onclick="openAddProject()">+ เพิ่มโครงการใหม่</button>
         </div>
       </div>
 
@@ -817,14 +929,23 @@ function filterAdminTable(){
 }
 async function exportCsv(){
   const list = await listParticipants();
-  const rows = [['uid','name','phone','affiliation','registeredAt', ...ZONES.map(z=>z.id), 'redeemed','satisfaction','votedZone']];
-  list.forEach(p=>rows.push([p.uid,p.name,p.phone,p.affil,p.registeredAt, ...ZONES.map(z=>p.stamps[z.id]?1:0), p.redeemed?1:0, p.satisfaction||'', p.votedZone||'']));
+  const rows = [['uid','name','phone','affiliation','registeredAt', ...ZONES.map(z=>z.id), 'redeemed','satisfaction', ...ZONES.map(z=>'vote_'+z.id)]];
+  list.forEach(p=>rows.push([p.uid,p.name,p.phone,p.affil,p.registeredAt, ...ZONES.map(z=>p.stamps[z.id]?1:0), p.redeemed?1:0, p.satisfaction||'', ...ZONES.map(z=>(p.votes&&p.votes[z.id])||'')]));
   const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob(["\uFEFF"+csv], {type:'text/csv;charset=utf-8;'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'health-passport-export.csv';
   a.click();
+}
+async function doResetZonesProjects(){
+  if(!confirm('จะลบโซนและโครงการทั้งหมดที่มีอยู่ แล้วโหลดชุดข้อมูล 8 โซน 26 โครงการใหม่ทับ (ข้อมูลผู้เข้าร่วมงานจะไม่ถูกลบ) ยืนยันหรือไม่?')) return;
+  const r = await apiPost({action:'resetZonesAndProjects', pin: state.adminPin});
+  if(r && r.error){ alert(r.error); return; }
+  zonesLoaded = false; projectsLoaded = false;
+  await loadZones(); zonesLoaded = true;
+  await loadProjects(); projectsLoaded = true;
+  renderAdmin();
 }
 
 function zoneFormHtml(z){
@@ -865,6 +986,48 @@ async function removeZone(id){
   if(!confirm('ยืนยันลบโซนนี้? ผู้เข้าร่วมที่เคยได้ตราประทับโซนนี้จะยังมีข้อมูลอยู่ แต่โซนนี้จะไม่ปรากฏให้สแกนอีกต่อไป')) return;
   ZONES = ZONES.filter(z=>z.id!==id);
   await persistZones();
+  renderAdmin();
+}
+
+function projectFormHtml(pj){
+  const editing = !!pj;
+  return `
+    <div class="zone-form-box">
+      <label>โซน</label>
+      <select id="pf-zone">${ZONES.map(z=>`<option value="${z.id}" ${editing && pj.zoneId===z.id?'selected':''}>${z.icon} ${z.name}</option>`).join('')}</select>
+      <label>รหัสโครงการ</label>
+      <input type="text" id="pf-code" value="${editing?pj.code:''}" placeholder="เช่น PW104" ${editing?'disabled':''} style="text-transform:uppercase;">
+      <label>ชื่อโครงการ</label>
+      <input type="text" id="pf-name" value="${editing?pj.name.replace(/"/g,'&quot;'):''}" placeholder="ชื่อโครงการเต็ม">
+      <div class="toolbar">
+        <button class="btn btn-primary" onclick="submitProject(${editing?`'${pj.code}'`:'null'})">${editing?'บันทึกการแก้ไข':'เพิ่มโครงการนี้'}</button>
+        <button class="btn btn-outline" onclick="closeProjectForm()">ยกเลิก</button>
+      </div>
+    </div>
+  `;
+}
+function openAddProject(){ document.getElementById('project-form-area').innerHTML = projectFormHtml(null); }
+function openEditProject(code){ const pj = PROJECTS.find(x=>x.code===code); document.getElementById('project-form-area').innerHTML = projectFormHtml(pj); }
+function closeProjectForm(){ document.getElementById('project-form-area').innerHTML = `<button class="btn btn-outline" style="margin-top:12px;" onclick="openAddProject()">+ เพิ่มโครงการใหม่</button>`; }
+async function submitProject(code){
+  const zoneId = document.getElementById('pf-zone').value;
+  const newCode = code || document.getElementById('pf-code').value.trim().toUpperCase();
+  const name = document.getElementById('pf-name').value.trim();
+  if(!newCode || !name){ return; }
+  if(code){
+    const pj = PROJECTS.find(x=>x.code===code);
+    pj.zoneId = zoneId; pj.name = name;
+  } else {
+    if(PROJECTS.some(x=>x.code===newCode)){ alert('มีรหัสโครงการนี้อยู่แล้ว'); return; }
+    PROJECTS.push({ code:newCode, zoneId, name });
+  }
+  await persistProjects();
+  renderAdmin();
+}
+async function removeProject(code){
+  if(!confirm('ยืนยันลบโครงการนี้?')) return;
+  PROJECTS = PROJECTS.filter(x=>x.code!==code);
+  await persistProjects();
   renderAdmin();
 }
 
