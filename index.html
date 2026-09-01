@@ -3,11 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAADcklEQVR4nO2WW0wcVRjHvzNn2FlgSKu7siAIW5tCWK4J8AAq4INiokGqbSiXpCGNrWlNDIltKA+NwQeC0dgGSHwwiLEimpAU7ENjSFigWLcXr0gvbAXq0gLLYmqXOXs75/Nhl1eWWSGNCf9kns7k9/3PN//zzSHIGcJjlPQ4i+8Y2DHwnwygEAIAwDN92zlcUOr8Uk7AfhoPgzQehlUTmzrRMq65PSvROHKsxYkkSQ+ds3Ojr7yWJC+4LAql3FJUdEcpK3MvZ+7BgYcavsX8/sztMAAAILjgo3WNfuOCy7qrttaxkl/ELqx6pSvXfjU5ugdym5r2T6anWVKi74Yz1PNw/6Mgcoa3Pu+dGFaTvIOtbfbq6oPXCTELADMCmLCx/sgkcoYipIloPKJ3EiLnnFBKx9885PhNSRLvjziyPZ7VJ0tKCm/m5eV4XirOFQ3HmysAABARCSFkI56uT4CISCilXNM0pu7m7d//mJ2Zmbbcdbj296fnZ5XQjfEU26sVbiGEIJF3ozFjygClVJpwLaoEBWmTA4Ke++SFJaPRt7el5WrqGzVVKITYTHHdBgghBBGRKIpxcZfJV6L9HF9QVes2fdZjSLRmpCqJCVWAiESSNn28dXeAc85lWZYzinK1fSim9nW0V66vhQKBAKFhbZuB9VAVFubEs71Wv+BhxRkMBtlgMOjl6Z6EUqS9paXF1stXfxISpZTKssyYj3V0dtm/6r8wCRAO7KaAeucAcoahgDeEnOGxY++ONzUdvSy4Juyj9l8AnkIgJlxwzS0G/Y+CAd8/gS2fAwAAQghBCCFLyyvutGeKzYUFOXdOt77zd2/vN3GWFIuvr/fj5zfLiskAQDiMlFI6NHzJceDg28VZ2db5jz48s/r1wFAgGAwSVU3kRqMRu859ULEtBjAiSZIkW/6Lf96cnnk2sgK23Oy7VZVlCw31+594rrwkf2NQDBlAzjAY+Sf0dH86BmBCVU33UpocOnu2266HE/N9gFJKERH7vvjWDADg9bJEzkP0/PnB5Bnn3Fy4SxC9u7HsngfXOHKGf92bva8oKb6EhLS1urrmH1Q13QtgRiAmzMsrn2luPjERjRXbhSRyxufnXSt+fyi1s/Pk2Kn3jlf+MX3b+d3FEZfL9UCy2bLg9ZqXs6KxYg7hVun/eyndMbBjYKv0L2U++MZLcOWdAAAAAElFTkSuQmCC">
+<link rel="apple-touch-icon" href="data:image/png;base64,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">
+<meta name="theme-color" content="#1F3D3B">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Health Passport กปท.">
+
 <title>Digital Health Passport — มหกรรมตลาดนัดสุขภาพ กปท.</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 :root{
   --paper:#F7F0DE;
@@ -261,6 +268,14 @@ const LOGO_B64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPIAAAEECAYAAAAS
 /* ===================== data layer — Google Sheets backend ===================== */
 // วาง Web app URL จาก Google Apps Script (ลงท้ายด้วย /exec) แทนที่ข้อความด้านล่างนี้
 const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzQWEYU2f-tMDdCV15zg6l-OcMN0xo8NIl4GjIR6HtjlCD4wQ05wZJDDEyEQWHVbYo89w/exec";
+// เกียรติบัตรศึกษาดูงาน — ผู้ลงนามและตำแหน่ง (แก้ตรงนี้ได้โดยตรง ไม่กระทบส่วนอื่น)
+const CERT_SIGNER_NAME = "นายธีรพล   สกุลรักษ์";
+const CERT_SIGNER_TITLE = "นายกเทศมนตรีเทศบาลเมืองนอกเมือง";
+// ถ้ามีไฟล์รูปลายเซ็นอิเล็กทรอนิกส์ (พื้นหลังโปร่งใส แนะนำ .png) ให้แปลงเป็น base64
+// แล้ววางแทนค่า null ด้านล่างนี้ เช่น: const CERT_SIGNATURE_B64 = "data:image/png;base64,....";
+// ถ้าไม่มีไฟล์ ปล่อยเป็น null ไว้ก่อน ระบบจะเว้นเส้นประไว้ให้เซ็นด้วยมือแทน
+const CERT_SIGNATURE_B64 = null;
+
 const DEFAULT_ZONES = [
   {id:'ltc',   name:'ผู้สูงอายุ / LTC',        icon:'👵', hex:'#C97A2B'},
   {id:'kids',  name:'เด็กและเยาวชน',           icon:'🧒', hex:'#C4483A'},
@@ -404,6 +419,9 @@ async function render(){
   if(state.view==='lookup') return renderLookup();
   if(state.view==='scan') return renderScan();
   if(state.view==='redeem') return renderRedeem();
+  if(state.view==='study-register') return renderStudyRegister();
+  if(state.view==='study-registered') return renderStudyRegistered();
+  if(state.view==='study-reflect') return renderStudyReflect();
   if(state.view==='admin-gate') return renderAdminGate();
   if(state.view==='admin') return renderAdmin();
 }
@@ -432,7 +450,15 @@ function renderCover(){
         </button>
         <button class="role-card" onclick="state.view='redeem';render()">
           <div class="role-ic" style="background:var(--zone-ltc)">🎁</div>
-          <div><div class="role-title">จุดรับของที่ระลึก</div><div class="role-desc">ตรวจสิทธิ 4/4 โซน และรับของรางวัล</div></div>
+          <div><div class="role-title">จุดรับของที่ระลึก</div><div class="role-desc">ตรวจสิทธิครบทุกโซน และรับของรางวัล</div></div>
+        </button>
+        <button class="role-card" onclick="state.view='study-register';render()">
+          <div class="role-ic" style="background:#2E6E8E">🎓</div>
+          <div><div class="role-title">ลงทะเบียนศึกษาดูงาน</div><div class="role-desc">สำหรับนักเรียน/นักศึกษาที่มาศึกษาดูงาน</div></div>
+        </button>
+        <button class="role-card" onclick="state.view='study-reflect';render()">
+          <div class="role-ic" style="background:#8A4B6B">📝</div>
+          <div><div class="role-title">ส่งแบบสะท้อน รับเกียรติบัตร</div><div class="role-desc">หลังศึกษาดูงานเสร็จ กรอกความประทับใจรับเกียรติบัตร PDF</div></div>
         </button>
       </div>
       <button class="btn btn-outline" style="margin-top:16px;font-size:12px;padding:8px 16px;" onclick="state.view='admin-gate';render()">แผงควบคุมผู้ดูแลระบบ</button>
@@ -790,6 +816,264 @@ async function finishRedeem(uid){
   p.satisfaction = document.getElementById('satis').value;
   await saveParticipant(p);
   document.getElementById('redeem-result').innerHTML = `<div class="ok-box">🎁 บันทึกสำเร็จ! มอบของที่ระลึกให้ ${p.name} ได้เลย</div>`;
+}
+
+/* ---------- study visit (students/researchers) ---------- */
+function renderStudyRegister(){
+  app.innerHTML = `
+    ${header(true)}
+    <div class="page">
+      <div class="eyebrow">สำหรับนักเรียน/นักศึกษา</div>
+      <h2>ลงทะเบียนศึกษาดูงาน</h2>
+      <p class="lead">กรอกข้อมูลก่อนเริ่มศึกษาดูงาน ระบบจะออกเลขทะเบียนคุมให้ทันที</p>
+      <label>ชื่อ-นามสกุล</label>
+      <input type="text" id="sv-name" placeholder="เช่น นายสมชาย ใจดี">
+      <label>สถาบันการศึกษา / หน่วยงาน</label>
+      <input type="text" id="sv-institution" placeholder="เช่น โรงเรียน... / มหาวิทยาลัย...">
+      <label>เบอร์โทรศัพท์ (ถ้ามี)</label>
+      <input type="tel" id="sv-phone">
+      <div id="sv-err"></div>
+      <button class="btn btn-primary btn-block" onclick="submitStudyRegister()">ลงทะเบียนศึกษาดูงาน</button>
+    </div>
+  `;
+}
+async function submitStudyRegister(){
+  const name = document.getElementById('sv-name').value.trim();
+  const institution = document.getElementById('sv-institution').value.trim();
+  const phone = document.getElementById('sv-phone').value.trim();
+  const errBox = document.getElementById('sv-err');
+  if(!name || !institution){
+    errBox.innerHTML = `<div class="error-box">กรุณากรอกชื่อและสถาบันการศึกษาให้ครบถ้วน</div>`;
+    return;
+  }
+  errBox.innerHTML = `<div class="hint">กำลังลงทะเบียน...</div>`;
+  try{
+    const r = await apiPost({action:'registerStudyVisitor', data:{name, institution, phone}});
+    state.studyRecord = r;
+    state.view = 'study-registered';
+    render();
+  }catch(e){
+    errBox.innerHTML = `<div class="error-box">ลงทะเบียนไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}</div>`;
+  }
+}
+function renderStudyRegistered(){
+  const r = state.studyRecord || {};
+  app.innerHTML = `
+    ${header(true)}
+    <div class="page" style="text-align:center;">
+      <div class="eyebrow">ลงทะเบียนสำเร็จ</div>
+      <h2>เลขทะเบียนศึกษาดูงานของคุณ</h2>
+      <div class="qr-wrap">
+        <div class="uid-tag">${r.code}</div>
+        <div id="sv-qrcode"></div>
+        <div class="pname">${r.name}</div>
+        <div class="paffil">${r.institution}</div>
+      </div>
+      <p class="lead" style="margin-top:16px;">บันทึกภาพหน้าจอนี้ไว้ — หลังจากศึกษาดูงานเสร็จแล้ว กลับมาที่เมนู "ส่งแบบสะท้อน รับเกียรติบัตร" แล้วสแกน QR หรือกรอกเลขทะเบียนนี้ เพื่อรับเกียรติบัตร PDF ทันที</p>
+      <div class="toolbar" style="justify-content:center;">
+        <button class="btn btn-outline" onclick="downloadSvQR('${r.code}')">⬇️ ดาวน์โหลด QR</button>
+        <button class="btn btn-gold" onclick="goCover()">เสร็จสิ้น</button>
+      </div>
+    </div>
+  `;
+  new QRCode(document.getElementById('sv-qrcode'), { text:r.code, width:180, height:180, colorDark:'#1F3D3B', colorLight:'#FFFDF7', correctLevel: QRCode.CorrectLevel.M });
+}
+function downloadSvQR(code){
+  const canvas = document.querySelector('#sv-qrcode canvas');
+  if(!canvas){ alert('ไม่พบ QR Code กรุณาลองใหม่อีกครั้ง'); return; }
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = code + '.png';
+  a.click();
+}
+function renderStudyReflect(){
+  app.innerHTML = `
+    ${header(true)}
+    <div class="page">
+      <div class="eyebrow">หลังศึกษาดูงาน</div>
+      <h2>ส่งแบบสะท้อนการเรียนรู้</h2>
+      <p class="lead">สแกน QR หรือกรอกเลขทะเบียนที่ได้รับตอนลงทะเบียน</p>
+      <button class="btn btn-outline btn-block" onclick="startSvScanner()">📷 สแกน QR แทนการพิมพ์</button>
+      <div id="sv-reader" style="margin-top:12px;"></div>
+      <label>หรือกรอกเลขทะเบียนเอง</label>
+      <input type="text" id="sv-code" placeholder="SV2026-0001" style="text-transform:uppercase;">
+      <div id="sv-lookup-result"></div>
+      <button class="btn btn-primary btn-block" onclick="doStudyLookup()">ค้นหา</button>
+    </div>
+  `;
+}
+function startSvScanner(){
+  const readerDiv = document.getElementById('sv-reader');
+  readerDiv.innerHTML = '<div id="sv-reader-inner" style="border-radius:12px;overflow:hidden;border:1.5px solid var(--paper-edge);"></div><div class="scan-status">กำลังเปิดกล้อง...</div>';
+  try{
+    state.html5qr = new Html5Qrcode("sv-reader-inner");
+    state.html5qr.start(
+      { facingMode:"environment" },
+      { fps:10, qrbox:220 },
+      (decodedText)=>{
+        document.getElementById('sv-code').value = decodedText.trim();
+        stopSvScanner();
+        doStudyLookup();
+      },
+      ()=>{}
+    ).catch(()=>{ readerDiv.innerHTML = '<div class="hint">ไม่สามารถเปิดกล้องได้ กรุณากรอกรหัสด้วยตนเองแทน</div>'; });
+  }catch(e){
+    readerDiv.innerHTML = '<div class="hint">ไม่สามารถเปิดกล้องได้ กรุณากรอกรหัสด้วยตนเองแทน</div>';
+  }
+}
+function stopSvScanner(){
+  try{ if(state.html5qr) state.html5qr.stop().then(()=>state.html5qr.clear()); }catch(e){}
+  const readerDiv = document.getElementById('sv-reader');
+  if(readerDiv) readerDiv.innerHTML = '';
+}
+async function doStudyLookup(){
+  const code = document.getElementById('sv-code').value.trim();
+  const box = document.getElementById('sv-lookup-result');
+  if(!code){ box.innerHTML = `<div class="error-box">กรุณากรอกเลขทะเบียน</div>`; return; }
+  box.innerHTML = `<div class="hint">กำลังค้นหา...</div>`;
+  try{
+    const r = await apiGet({action:'getStudyVisitor', code});
+    if(!r){ box.innerHTML = `<div class="error-box">ไม่พบเลขทะเบียนนี้ ตรวจตัวพิมพ์ใหญ่-เล็กอีกครั้ง</div>`; return; }
+    state.studyRecord = r;
+    renderReflectForm(r);
+  }catch(e){
+    box.innerHTML = `<div class="error-box">ค้นหาไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}</div>`;
+  }
+}
+function renderReflectForm(r){
+  const already = !!r.submittedAt;
+  app.innerHTML = `
+    ${header(true)}
+    <div class="page">
+      <div class="eyebrow">${r.code}</div>
+      <h2>${r.name}</h2>
+      <p class="lead">${r.institution}</p>
+      ${already ? `
+        <div class="ok-box">ส่งแบบสะท้อนการเรียนรู้ไปแล้วเมื่อ ${new Date(r.submittedAt).toLocaleString('th-TH')}</div>
+        <button class="btn btn-gold btn-block" onclick="downloadCertAgain()">📄 ดาวน์โหลดเกียรติบัตรอีกครั้ง</button>
+      ` : `
+        <label>ความประทับใจจากการศึกษาดูงาน</label>
+        <textarea id="sv-impression" rows="4" style="width:100%;padding:11px 13px;border-radius:9px;border:1.5px solid var(--paper-edge);font-family:'Sarabun';font-size:15px;background:var(--paper);color:var(--ink);"></textarea>
+        <label>ความรู้ที่ได้รับจากการศึกษาดูงาน</label>
+        <textarea id="sv-knowledge" rows="4" style="width:100%;padding:11px 13px;border-radius:9px;border:1.5px solid var(--paper-edge);font-family:'Sarabun';font-size:15px;background:var(--paper);color:var(--ink);"></textarea>
+        <div id="sv-reflect-err"></div>
+        <button class="btn btn-gold btn-block" onclick="submitReflection('${r.code}')">ส่งและรับเกียรติบัตร</button>
+      `}
+    </div>
+  `;
+}
+async function submitReflection(code){
+  const impression = document.getElementById('sv-impression').value.trim();
+  const knowledge = document.getElementById('sv-knowledge').value.trim();
+  const errBox = document.getElementById('sv-reflect-err');
+  if(!impression || !knowledge){
+    errBox.innerHTML = `<div class="error-box">กรุณากรอกทั้งสองช่องให้ครบถ้วน</div>`;
+    return;
+  }
+  errBox.innerHTML = `<div class="hint">กำลังบันทึกและสร้างเกียรติบัตร...</div>`;
+  try{
+    const r = await apiPost({action:'submitReflection', code, impression, knowledge});
+    state.studyRecord = r;
+    await generateCertificate(r);
+    renderReflectForm(r);
+  }catch(e){
+    errBox.innerHTML = `<div class="error-box">ไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}</div>`;
+  }
+}
+function downloadCertAgain(){ if(state.studyRecord) generateCertificate(state.studyRecord); }
+
+// Draws the certificate on a canvas (so Thai text renders perfectly using the
+// page's own web fonts) then wraps that image into a real A5-landscape PDF —
+// sidesteps the need to embed a Thai font inside the PDF text layer itself.
+async function generateCertificate(r){
+  if(document.fonts && document.fonts.ready){ try{ await document.fonts.ready; }catch(e){} }
+  const W = 1654, H = 1165; // ~200dpi for A5 landscape (210 x 148 mm)
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#FFFDF7';
+  ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle = '#B8862E';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(28,28,W-56,H-56);
+  ctx.strokeStyle = '#1F3D3B';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(42,42,W-84,H-84);
+
+  try{
+    const logoImg = new Image();
+    await new Promise((res,rej)=>{ logoImg.onload=res; logoImg.onerror=res; logoImg.src = LOGO_B64; });
+    const logoSize = 108;
+    ctx.drawImage(logoImg, W/2 - logoSize/2, 62, logoSize, logoSize);
+  }catch(e){}
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#B8862E';
+  ctx.font = '600 22px Sarabun';
+  ctx.fillText('มหกรรมตลาดนัดสุขภาพ กปท. เทศบาลเมืองนอกเมือง', W/2, 200);
+
+  ctx.fillStyle = '#1F3D3B';
+  ctx.font = '600 58px Mitr';
+  ctx.fillText('เกียรติบัตร', W/2, 275);
+
+  ctx.fillStyle = '#3E5C58';
+  ctx.font = '400 24px Sarabun';
+  ctx.fillText('มอบให้ไว้เพื่อแสดงว่า', W/2, 330);
+
+  // recipient name — auto-shrink if very long so it never overflows
+  let nameSize = 40;
+  ctx.font = `600 ${nameSize}px Mitr`;
+  while (ctx.measureText(r.name).width > W - 260 && nameSize > 22) {
+    nameSize -= 2;
+    ctx.font = `600 ${nameSize}px Mitr`;
+  }
+  ctx.fillStyle = '#1F3D3B';
+  ctx.fillText(r.name, W/2, 395);
+
+  ctx.font = '400 24px Sarabun';
+  ctx.fillStyle = '#3E5C58';
+  ctx.fillText(`จาก ${r.institution}`, W/2, 435);
+
+  ctx.font = '400 23px Sarabun';
+  ctx.fillStyle = '#1F3D3B';
+  const dateStr = new Date(r.submittedAt || Date.now()).toLocaleDateString('th-TH', { year:'numeric', month:'long', day:'numeric' });
+  ctx.fillText('ได้เข้าร่วมศึกษาดูงาน ณ งานมหกรรมตลาดนัดสุขภาพ กปท. เทศบาลเมืองนอกเมือง', W/2, 500);
+  ctx.fillText(`เมื่อวันที่ ${dateStr}`, W/2, 535);
+
+  // registration code, bottom-left
+  ctx.textAlign = 'left';
+  ctx.font = '400 18px Sarabun';
+  ctx.fillStyle = '#3E5C58';
+  ctx.fillText(`เลขทะเบียนที่ ${r.code}`, 90, H-90);
+
+  // signature block, bottom-right
+  const sigCenterX = W - 320;
+  if(CERT_SIGNATURE_B64){
+    try{
+      const sigImg = new Image();
+      await new Promise((res,rej)=>{ sigImg.onload=res; sigImg.onerror=res; sigImg.src = CERT_SIGNATURE_B64; });
+      ctx.drawImage(sigImg, sigCenterX-90, H-235, 180, 80);
+    }catch(e){}
+  } else {
+    ctx.textAlign = 'center';
+    ctx.font = '400 22px Sarabun';
+    ctx.fillStyle = '#1F3D3B';
+    ctx.fillText('.......................................', sigCenterX, H-165);
+  }
+  ctx.textAlign = 'center';
+  ctx.font = '600 20px Sarabun';
+  ctx.fillStyle = '#1F3D3B';
+  ctx.fillText(CERT_SIGNER_NAME, sigCenterX, H-135);
+  ctx.font = '400 18px Sarabun';
+  ctx.fillStyle = '#3E5C58';
+  ctx.fillText(CERT_SIGNER_TITLE, sigCenterX, H-108);
+
+  const imgData = canvas.toDataURL('image/jpeg', 0.95);
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation:'landscape', unit:'mm', format:'a5' });
+  pdf.addImage(imgData, 'JPEG', 0, 0, 210, 148);
+  pdf.save(`เกียรติบัตร-${r.code}.pdf`);
 }
 
 /* ---------- admin ---------- */
