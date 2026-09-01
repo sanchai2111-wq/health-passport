@@ -11,7 +11,7 @@
 
 <title>Digital Health Passport — มหกรรมตลาดนัดสุขภาพ กปท.</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600&family=Sarabun:wght@300;400;500;600;700&family=Kanit:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -275,7 +275,6 @@ const CERT_SIGNER_TITLE = "นายกเทศมนตรีเทศบา�
 // แล้ววางแทนค่า null ด้านล่างนี้ เช่น: const CERT_SIGNATURE_B64 = "data:image/png;base64,....";
 // ถ้าไม่มีไฟล์ ปล่อยเป็น null ไว้ก่อน ระบบจะเว้นเส้นประไว้ให้เซ็นด้วยมือแทน
 const CERT_SIGNATURE_B64 = null;
-
 const DEFAULT_ZONES = [
   {id:'ltc',   name:'ผู้สูงอายุ / LTC',        icon:'👵', hex:'#C97A2B'},
   {id:'kids',  name:'เด็กและเยาวชน',           icon:'🧒', hex:'#C4483A'},
@@ -285,14 +284,15 @@ const DEFAULT_ZONES = [
 let ZONES = [];
 let PROJECTS = [];
 let ADMIN_PIN = '2026';
-const AFFIL = ['อสม.','ชุมชน','หน่วยงานราชการ','ประชาชนทั่วไป','ผู้รับผิดชอบโครงการ','นักเรียน/นักศึกษา','เจ้าหน้าที่ตามคำสั่ง','หน่วยงานร่วมจัดนิทรรศการ','ร้านค้า','ตัวแทนหน่วยงาน'];
+const AFFIL = ['อสม.','ชุมชน','หน่วยงานราชการ','ประชาชนทั่วไป','ผู้รับผิดชอบโครงการ','เจ้าหน้าที่ตามคำสั่ง','หน่วยงานร่วมจัดนิทรรศการ','ร้านค้า','ตัวแทนหน่วยงาน'];
 
 function apiConfigured(){ return SHEET_API_URL && SHEET_API_URL.indexOf('วางลิงก์') === -1; }
 
 async function apiGet(params){
   const url = new URL(SHEET_API_URL);
   Object.keys(params).forEach(k=>url.searchParams.set(k, params[k]));
-  const res = await fetch(url.toString());
+  url.searchParams.set('_ts', Date.now()); // cache-bust: browsers/proxies otherwise reuse a stale GET response for the same URL
+  const res = await fetch(url.toString(), { cache: 'no-store' });
   const data = await res.json();
   if(data && data.error) throw new Error(data.error); // surface server-side errors instead of pretending success
   return data;
@@ -951,6 +951,7 @@ function renderReflectForm(r){
       ${already ? `
         <div class="ok-box">ส่งแบบสะท้อนการเรียนรู้ไปแล้วเมื่อ ${new Date(r.submittedAt).toLocaleString('th-TH')}</div>
         <button class="btn btn-gold btn-block" onclick="downloadCertAgain()">📄 ดาวน์โหลดเกียรติบัตรอีกครั้ง</button>
+        <div id="sv-download-err"></div>
       ` : `
         <label>ความประทับใจจากการศึกษาดูงาน</label>
         <textarea id="sv-impression" rows="4" style="width:100%;padding:11px 13px;border-radius:9px;border:1.5px solid var(--paper-edge);font-family:'Sarabun';font-size:15px;background:var(--paper);color:var(--ink);"></textarea>
@@ -980,101 +981,67 @@ async function submitReflection(code){
     errBox.innerHTML = `<div class="error-box">ไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}</div>`;
   }
 }
-function downloadCertAgain(){ if(state.studyRecord) generateCertificate(state.studyRecord); }
+async function downloadCertAgain(){
+  const errBox = document.getElementById('sv-download-err');
+  if(!state.studyRecord) return;
+  if(errBox) errBox.innerHTML = `<div class="hint">กำลังสร้างเกียรติบัตร...</div>`;
+  try{
+    await generateCertificate(state.studyRecord);
+    if(errBox) errBox.innerHTML = '';
+  }catch(e){
+    if(errBox) errBox.innerHTML = `<div class="error-box">สร้างเกียรติบัตรไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'} — ลองใหม่อีกครั้ง หรือลองเปลี่ยนเบราว์เซอร์เป็น Chrome/Safari</div>`;
+  }
+}
 
 // Draws the certificate on a canvas (so Thai text renders perfectly using the
 // page's own web fonts) then wraps that image into a real A5-landscape PDF —
 // sidesteps the need to embed a Thai font inside the PDF text layer itself.
+// พื้นหลังเกียรติบัตรใช้ไฟล์ภาพร่วมกับกลุ่มอื่นๆ (ไม่ฝัง base64 ในหน้านี้ เพื่อไม่ให้หน้าเว็บหลักโตขึ้น
+// — โหลดจากไฟล์แยกเฉพาะตอนสร้างเกียรติบัตรจริงเท่านั้น) ต้องอัปโหลดไฟล์ cert-bg-shared.jpg
+// ไว้โฟลเดอร์เดียวกับ index.html บน GitHub Pages
+const CERT_SHARED_BG_URL = './cert-bg-shared.jpg';
+
 async function generateCertificate(r){
   if(document.fonts && document.fonts.ready){ try{ await document.fonts.ready; }catch(e){} }
-  const W = 1654, H = 1165; // ~200dpi for A5 landscape (210 x 148 mm)
+  const W = 2000, H = 1412; // A4 แนวนอน ~170dpi ให้ตรงกับกลุ่มอื่นๆ
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
 
-  ctx.fillStyle = '#FFFDF7';
-  ctx.fillRect(0,0,W,H);
-  ctx.strokeStyle = '#B8862E';
-  ctx.lineWidth = 6;
-  ctx.strokeRect(28,28,W-56,H-56);
-  ctx.strokeStyle = '#1F3D3B';
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(42,42,W-84,H-84);
+  const bg = new Image();
+  const bgLoaded = await new Promise((res)=>{ bg.onload=()=>res(true); bg.onerror=()=>res(false); bg.src = CERT_SHARED_BG_URL; });
+  if(!bgLoaded) throw new Error('โหลดภาพพื้นหลังเกียรติบัตรไม่สำเร็จ (ตรวจสอบว่าอัปโหลดไฟล์ cert-bg-shared.jpg ไว้โฟลเดอร์เดียวกับเว็บแล้ว)');
+  ctx.drawImage(bg, 0, 0, W, H);
 
-  try{
-    const logoImg = new Image();
-    await new Promise((res,rej)=>{ logoImg.onload=res; logoImg.onerror=res; logoImg.src = LOGO_B64; });
-    const logoSize = 108;
-    ctx.drawImage(logoImg, W/2 - logoSize/2, 62, logoSize, logoSize);
-  }catch(e){}
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#143C78';
 
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#B8862E';
-  ctx.font = '600 22px Sarabun';
-  ctx.fillText('มหกรรมตลาดนัดสุขภาพ กปท. เทศบาลเมืองนอกเมือง', W/2, 200);
-
-  ctx.fillStyle = '#1F3D3B';
-  ctx.font = '600 58px Mitr';
-  ctx.fillText('เกียรติบัตร', W/2, 275);
-
-  ctx.fillStyle = '#3E5C58';
-  ctx.font = '400 24px Sarabun';
-  ctx.fillText('มอบให้ไว้เพื่อแสดงว่า', W/2, 330);
-
-  // recipient name — auto-shrink if very long so it never overflows
-  let nameSize = 40;
-  ctx.font = `600 ${nameSize}px Mitr`;
-  while (ctx.measureText(r.name).width > W - 260 && nameSize > 22) {
+  // recipient name — ใช้ฟอนต์ Kanit ให้ตรงกับกลุ่มอื่นๆ ทั้งหมด, ปรับขนาดอัตโนมัติถ้าชื่อยาว
+  let nameSize = 46;
+  ctx.font = `600 ${nameSize}px Kanit`;
+  while (ctx.measureText(r.name).width > W - 500 && nameSize > 24) {
     nameSize -= 2;
-    ctx.font = `600 ${nameSize}px Mitr`;
-  }
-  ctx.fillStyle = '#1F3D3B';
-  ctx.fillText(r.name, W/2, 395);
-
-  ctx.font = '400 24px Sarabun';
-  ctx.fillStyle = '#3E5C58';
-  ctx.fillText(`จาก ${r.institution}`, W/2, 435);
-
-  ctx.font = '400 23px Sarabun';
-  ctx.fillStyle = '#1F3D3B';
-  const dateStr = new Date(r.submittedAt || Date.now()).toLocaleDateString('th-TH', { year:'numeric', month:'long', day:'numeric' });
-  ctx.fillText('ได้เข้าร่วมศึกษาดูงาน ณ งานมหกรรมตลาดนัดสุขภาพ กปท. เทศบาลเมืองนอกเมือง', W/2, 500);
-  ctx.fillText(`เมื่อวันที่ ${dateStr}`, W/2, 535);
-
-  // registration code, bottom-left
-  ctx.textAlign = 'left';
-  ctx.font = '400 18px Sarabun';
-  ctx.fillStyle = '#3E5C58';
-  ctx.fillText(`เลขทะเบียนที่ ${r.code}`, 90, H-90);
-
-  // signature block, bottom-right
-  const sigCenterX = W - 320;
-  if(CERT_SIGNATURE_B64){
-    try{
-      const sigImg = new Image();
-      await new Promise((res,rej)=>{ sigImg.onload=res; sigImg.onerror=res; sigImg.src = CERT_SIGNATURE_B64; });
-      ctx.drawImage(sigImg, sigCenterX-90, H-235, 180, 80);
-    }catch(e){}
-  } else {
-    ctx.textAlign = 'center';
-    ctx.font = '400 22px Sarabun';
-    ctx.fillStyle = '#1F3D3B';
-    ctx.fillText('.......................................', sigCenterX, H-165);
+    ctx.font = `600 ${nameSize}px Kanit`;
   }
   ctx.textAlign = 'center';
-  ctx.font = '600 20px Sarabun';
-  ctx.fillStyle = '#1F3D3B';
-  ctx.fillText(CERT_SIGNER_NAME, sigCenterX, H-135);
-  ctx.font = '400 18px Sarabun';
-  ctx.fillStyle = '#3E5C58';
-  ctx.fillText(CERT_SIGNER_TITLE, sigCenterX, H-108);
+  ctx.fillText(r.name, W/2, 570);
+
+  ctx.font = '600 26px Kanit';
+  ctx.fillText(`สถาบัน: ${r.institution}`, W/2, 638);
+
+  // เลขทะเบียนที่ (มุมขวาบน) — ใช้เลขทะเบียนนักศึกษาเดิม (SV...) ไม่ใช่รูปแบบ กปท.ทม. ของกลุ่มอื่น
+  ctx.textAlign = 'left';
+  ctx.font = '700 30px Kanit';
+  ctx.fillText(r.code, 1560, 55);
 
   const imgData = canvas.toDataURL('image/jpeg', 0.95);
+  if(!window.jspdf){ throw new Error('ไลบรารีสร้าง PDF โหลดไม่สำเร็จ (เช็คสัญญาณอินเทอร์เน็ต แล้วลองใหม่)'); }
   const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF({ orientation:'landscape', unit:'mm', format:'a5' });
-  pdf.addImage(imgData, 'JPEG', 0, 0, 210, 148);
+  const pdf = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
+  pdf.addImage(imgData, 'JPEG', 0, 0, 297, 210);
   pdf.save(`เกียรติบัตร-${r.code}.pdf`);
 }
+
 
 /* ---------- admin ---------- */
 function renderAdminGate(){
