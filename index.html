@@ -544,10 +544,11 @@ async function renderRegistered(){
         <div class="paffil">${p.affil} · ${p.phone}</div>
       </div>
       <div class="ok-box" style="text-align:center;margin-top:6px;">✓ บันทึกข้อมูลเรียบร้อยแล้ว</div>
+      <div class="hint" style="text-align:center;margin-top:10px;">💡 วิธีที่ชัวร์ที่สุด: <b>ถ่ายภาพหน้าจอนี้ไว้เลย</b> (กดปุ่ม Power + Volume พร้อมกัน) จะได้ QR เก็บไว้ในอัลบั้มรูปแน่นอน 100%<br>(ถ้าเผลอลืมเก็บภาพ ก็กลับมาค้นหาด้วยชื่อ-นามสกุลได้ทีหลังเสมอ ไม่ต้องกังวล)</div>
       ${stampRowHtml(p)}
       <div class="toolbar" style="justify-content:center;">
         <button class="btn btn-outline" onclick="printCard()">🖨️ พิมพ์บัตร</button>
-        <button class="btn btn-outline" onclick="downloadQR('${p.uid}')">📤 แชร์/บันทึก QR</button>
+        <button class="btn btn-outline" onclick="downloadQR('${p.uid}')">📤 แชร์ไฟล์ QR (ส่งให้คนอื่น/บันทึกเอง)</button>
         <button class="btn btn-gold" onclick="goCover()">เสร็จสิ้น</button>
       </div>
     </div>
@@ -985,9 +986,10 @@ function renderStudyRegistered(){
         <div class="pname">${r.name}</div>
         <div class="paffil">${r.institution}</div>
       </div>
-      <p class="lead" style="margin-top:16px;">บันทึกภาพหน้าจอนี้ไว้ — หลังจากศึกษาดูงานเสร็จแล้ว กลับมาที่เมนู "ส่งแบบสะท้อน รับเกียรติบัตร" แล้วสแกน QR หรือกรอกเลขทะเบียนนี้ เพื่อรับเกียรติบัตร PDF ทันที</p>
+      <p class="lead" style="margin-top:16px;">หลังจากศึกษาดูงานเสร็จแล้ว กลับมาที่เมนู "ส่งแบบสะท้อน รับเกียรติบัตร" แล้วสแกน QR หรือกรอกเลขทะเบียนนี้ เพื่อรับเกียรติบัตร PDF ทันที</p>
+      <div class="hint" style="text-align:center;">💡 วิธีที่ชัวร์ที่สุด: <b>ถ่ายภาพหน้าจอนี้ไว้เลย</b> (กดปุ่ม Power + Volume พร้อมกัน) จะได้ QR เก็บไว้ในอัลบั้มรูปแน่นอน 100%<br>(ถ้าเผลอลืมเก็บภาพ ก็กลับมาค้นหาด้วยชื่อ-นามสกุลได้ทีหลังเสมอ ไม่ต้องกังวล)</div>
       <div class="toolbar" style="justify-content:center;">
-        <button class="btn btn-outline" onclick="downloadSvQR('${r.code}')">📤 แชร์/บันทึก QR</button>
+        <button class="btn btn-outline" onclick="downloadSvQR('${r.code}')">📤 แชร์ไฟล์ QR (ส่งให้คนอื่น/บันทึกเอง)</button>
         <button class="btn btn-gold" onclick="goCover()">เสร็จสิ้น</button>
       </div>
     </div>
