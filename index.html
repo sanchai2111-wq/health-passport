@@ -183,6 +183,12 @@ input:focus,select:focus{outline:2px solid var(--gold-soft);outline-offset:1px;b
 .unlock-box .t{font-family:'Mitr';font-weight:500;font-size:15px;margin-bottom:4px;}
 .unlock-box .d{font-size:12.5px;opacity:.95;}
 
+.survey-box{
+  margin-top:14px;padding:14px;border-radius:12px;
+  background:var(--paper);border:1.5px solid var(--paper-edge);
+}
+.survey-title{font-weight:600;font-size:13.5px;color:var(--ink);margin-bottom:4px;}
+
 /* ---------- scanner ---------- */
 .zone-select{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
 @media(max-width:480px){.zone-select{grid-template-columns:1fr;}}
@@ -267,7 +273,7 @@ const LOGO_B64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPIAAAEECAYAAAAS
 
 /* ===================== data layer — Google Sheets backend ===================== */
 // วาง Web app URL จาก Google Apps Script (ลงท้ายด้วย /exec) แทนที่ข้อความด้านล่างนี้
-const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzQWEYU2f-tMDdCV15zg6l-OcMN0xo8NIl4GjIR6HtjlCD4wQ05wZJDDEyEQWHVbYo89w/exec";
+const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzkjEqf45UGTW1Y2RfyliO5R-ByMKpIf1uZ0xqUe1mOGQ2Ejm9xCjdWkQEN8y1PDZQnSA/exec";
 // เกียรติบัตรศึกษาดูงาน — ผู้ลงนามและตำแหน่ง (แก้ตรงนี้ได้โดยตรง ไม่กระทบส่วนอื่น)
 const CERT_SIGNER_NAME = "นายธีรพล   สกุลรักษ์";
 const CERT_SIGNER_TITLE = "นายกเทศมนตรีเทศบาลเมืองนอกเมือง";
@@ -482,7 +488,7 @@ function renderRegister(){
       <label>สังกัด</label>
       <select id="f-affil">${AFFIL.map(a=>`<option value="${a}">${a}</option>`).join('')}</select>
       <div id="reg-err"></div>
-      <button class="btn btn-primary btn-block" onclick="submitRegister()">สร้าง QR Code ประจำตัว</button>
+      <button id="reg-submit-btn" class="btn btn-primary btn-block" onclick="submitRegister()">สร้าง QR Code ประจำตัว</button>
     </div>
   `;
 }
@@ -492,33 +498,29 @@ async function submitRegister(){
   const phone = document.getElementById('f-phone').value.trim();
   const affil = document.getElementById('f-affil').value;
   const errBox = document.getElementById('reg-err');
+  const btn = document.getElementById('reg-submit-btn');
   if(!name || !phone){
     errBox.innerHTML = `<div class="error-box">กรุณากรอกชื่อ-นามสกุล และเบอร์โทรศัพท์ให้ครบถ้วน</div>`;
     return;
   }
-  // Generate the UID locally and show the QR immediately — no waiting on the
-  // network. The actual save to Google Sheets happens in the background.
-  const p = {
-    uid: generateLocalUid(), name, phone, affil,
-    registeredAt: new Date().toISOString(), stamps: emptyStamps(),
-    redeemed:false, satisfaction:null, votedZone:null,
-  };
-  state.view='registered'; state.lastUid = p.uid; state.pendingParticipant = p;
-  render();
-  syncParticipantInBackground(p);
-}
-async function syncParticipantInBackground(p){
-  const el = ()=>document.getElementById('sync-status');
-  if(el()) el().innerHTML = `กำลังบันทึกข้อมูลไปที่ระบบกลาง...`;
+  if(btn) btn.disabled = true;
+  errBox.innerHTML = `<div class="hint">กำลังตรวจสอบและลงทะเบียน...</div>`;
   try{
-    await appendParticipant(p);
-    if(el()) el().innerHTML = `<span style="color:var(--zone-env)">บันทึกข้อมูลเรียบร้อย</span>`;
+    // ต้องรอเซิร์ฟเวอร์ตอบก่อน (ไม่สร้างรหัสเองที่เครื่องแบบเดิมแล้ว) เพราะต้องเช็คชื่อซ้ำ
+    // กับฐานข้อมูลกลางก่อนออกรหัสใหม่ให้เสมอ
+    const p = await apiPost({action:'registerParticipant', data:{name, phone, affil}});
+    if(p.duplicate){
+      errBox.innerHTML = `<div class="error-box">⚠️ ชื่อนี้เคยลงทะเบียนแล้ว<br>ชื่อ: ${p.name}<br>รหัส: <b>${p.uid}</b><br>กรุณาใช้รหัสเดิมนี้ ไม่ต้องลงทะเบียนซ้ำ</div>`;
+      if(btn) btn.disabled = false;
+      return;
+    }
+    state.view='registered'; state.lastUid = p.uid; state.pendingParticipant = p;
+    render();
   }catch(e){
-    const msg = (e && e.message) ? e.message : 'ไม่ทราบสาเหตุ';
-    if(el()) el().innerHTML = `<span style="color:var(--danger)">บันทึกไม่สำเร็จ: ${msg} — <button class="link-btn" onclick="retrySync()">ลองใหม่</button></span>`;
+    errBox.innerHTML = `<div class="error-box">ลงทะเบียนไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'} — ลองใหม่อีกครั้ง</div>`;
+    if(btn) btn.disabled = false;
   }
 }
-function retrySync(){ if(state.pendingParticipant) syncParticipantInBackground(state.pendingParticipant); }
 
 /* ---------- after registration: show QR + passport ---------- */
 async function renderRegistered(){
@@ -541,11 +543,11 @@ async function renderRegistered(){
         <div class="pname">${p.name}</div>
         <div class="paffil">${p.affil} · ${p.phone}</div>
       </div>
-      <div id="sync-status" class="hint" style="text-align:center;margin-top:6px;min-height:16px;"></div>
+      <div class="ok-box" style="text-align:center;margin-top:6px;">✓ บันทึกข้อมูลเรียบร้อยแล้ว</div>
       ${stampRowHtml(p)}
       <div class="toolbar" style="justify-content:center;">
         <button class="btn btn-outline" onclick="printCard()">🖨️ พิมพ์บัตร</button>
-        <button class="btn btn-outline" onclick="downloadQR('${p.uid}')">⬇️ ดาวน์โหลด QR</button>
+        <button class="btn btn-outline" onclick="downloadQR('${p.uid}')">📤 แชร์/บันทึก QR</button>
         <button class="btn btn-gold" onclick="goCover()">เสร็จสิ้น</button>
       </div>
     </div>
@@ -557,9 +559,20 @@ function printCard(){
   try{ window.print(); }
   catch(e){ alert('เบราว์เซอร์นี้ไม่รองรับการพิมพ์โดยตรง กรุณาใช้ปุ่ม "ดาวน์โหลด QR" แทน'); }
 }
-function downloadQR(uid){
+async function downloadQR(uid){
   const canvas = document.querySelector('#qrcode canvas');
   if(!canvas){ alert('ไม่พบ QR Code กรุณาลองใหม่อีกครั้ง'); return; }
+  // มือถือหลายรุ่น (โดยเฉพาะ iPhone) ดาวน์โหลดไฟล์ผ่านลิงก์ปกติแล้วไปเก็บไว้ที่แอป "ไฟล์"
+  // แทนที่จะเข้าอัลบั้มรูปโดยตรง — ใช้ Web Share API ก่อนถ้ารองรับ เพื่อให้กด "บันทึกรูปภาพ"
+  // ได้เองจากเมนูแชร์ของเครื่อง เหมือนแชร์รูปจาก Line/Facebook
+  try{
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    const file = new File([blob], uid + '.png', { type: 'image/png' });
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      await navigator.share({ files: [file], title: uid });
+      return;
+    }
+  }catch(e){ /* ผู้ใช้กดยกเลิกการแชร์ หรือเบราว์เซอร์ไม่รองรับ — ใช้ดาวน์โหลดปกติแทน */ }
   const a = document.createElement('a');
   a.href = canvas.toDataURL('image/png');
   a.download = uid + '.png';
@@ -593,6 +606,10 @@ function renderLookup(){
       <input type="text" id="look-uid" placeholder="KPT2026-001" style="text-transform:uppercase;">
       <div id="look-result"></div>
       <button class="btn btn-primary btn-block" onclick="doLookup()">ค้นหา</button>
+      <label style="margin-top:18px;">จำรหัสไม่ได้? ค้นหาด้วยชื่อ-นามสกุลแทน</label>
+      <input type="text" id="look-name">
+      <button class="btn btn-outline btn-block" onclick="doLookupByName('look-name','look-name-result','registered')">ค้นหาด้วยชื่อ</button>
+      <div id="look-name-result"></div>
     </div>
   `;
 }
@@ -606,6 +623,33 @@ async function doLookup(){
   state.lastUid = p.uid;
   state.pendingParticipant = null;
   state.view='registered';
+  render();
+}
+
+// ใช้ร่วมกันทั้ง 3 เมนู (บัตรผ่านของฉัน / จุดรับของที่ระลึก / ส่งแบบสะท้อน) — targetView บอกว่า
+// เลือกคนแล้วให้พาไปหน้าไหนต่อ
+async function doLookupByName(inputId, resultId, targetView){
+  const q = document.getElementById(inputId).value.trim();
+  const box = document.getElementById(resultId);
+  if(!q){ box.innerHTML = `<div class="error-box">กรุณาพิมพ์ชื่อหรือนามสกุล</div>`; return; }
+  box.innerHTML = `<div class="hint">กำลังค้นหา...</div>`;
+  try{
+    const list = await apiGet({action:'searchParticipantsByName', q});
+    if(!list.length){ box.innerHTML = `<div class="error-box">ไม่พบชื่อที่ตรงกัน ลองพิมพ์สั้นลงหรือตรวจตัวสะกดอีกครั้ง</div>`; return; }
+    box.innerHTML = list.map(p => `
+      <button class="role-card" style="margin-top:8px;" onclick='selectFoundParticipant(${JSON.stringify(p.uid)}, ${JSON.stringify(targetView)})'>
+        <div><div class="role-title">${p.name}</div><div class="role-desc">${p.uid} · ${p.phone}</div></div>
+      </button>
+    `).join('');
+  }catch(e){
+    box.innerHTML = `<div class="error-box">ค้นหาไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}</div>`;
+  }
+}
+async function selectFoundParticipant(uid, targetView){
+  state.lastUid = uid;
+  state.pendingParticipant = null;
+  if(targetView==='redeem'){ await prepareRedeem(uid); return; }
+  state.view = targetView || 'registered';
   render();
 }
 
@@ -696,11 +740,11 @@ function renderProjectPicker(p, zone){
       <p class="lead" style="font-size:12.5px;">เลือก 1 โครงการแทนผู้เข้าร่วมงาน แล้วจึงประทับตรา</p>
       <div>
         ${projects.length ? projects.map(pj=>`
-          <button class="btn btn-outline btn-block" style="text-align:left;justify-content:flex-start;margin-top:8px;" onclick="confirmStampVote('${p.uid}','${zone.id}','${pj.code}')">
+          <button class="btn btn-outline btn-block" style="text-align:left;justify-content:flex-start;margin-top:8px;" onclick='showCategoryPicker(${JSON.stringify(p.uid)},${JSON.stringify(zone.id)},${JSON.stringify(pj.code)},${JSON.stringify(pj.name)})'>
             <b>${pj.code}</b>&nbsp; ${pj.name}
           </button>`).join('') : '<div class="hint">โซนนี้ยังไม่มีโครงการย่อยตั้งไว้ — จะประทับตราโดยไม่โหวตโครงการ</div>'}
       </div>
-      ${!projects.length ? `<button class="btn btn-gold btn-block" onclick="confirmStampVote('${p.uid}','${zone.id}','')">ประทับตราต่อ</button>` : ''}
+      ${!projects.length ? `<button class="btn btn-gold btn-block" onclick="confirmStampVote('${p.uid}','${zone.id}','','')">ประทับตราต่อ</button>` : ''}
       <button class="btn btn-outline btn-block" style="margin-top:14px;" onclick="cancelProjectPicker()">ยกเลิก (ไม่ประทับตรา)</button>
     </div>
   `;
@@ -711,12 +755,41 @@ function cancelProjectPicker(){
   if(el) el.remove();
   resumeScannerAfterVote();
 }
-async function confirmStampVote(uid, zoneId, projectCode){
-  const el = document.getElementById('project-picker-overlay');
+// ป๊อปอัปที่ 2 — หลังเลือกโครงการแล้ว ให้เลือกต่อว่าโครงการนี้โดดเด่นด้านใด (เลือกได้ 1 ด้าน)
+// เพื่อให้ผลรางวัล 5 ด้านมาจากข้อมูลโหวตจริงแยกตามด้าน ไม่ต้องให้กรรมการตีความจากคะแนนรวมอีกต่อไป
+function showCategoryPicker(uid, zoneId, projectCode, projectName){
+  const projectOverlay = document.getElementById('project-picker-overlay');
+  if(projectOverlay) projectOverlay.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'stamp-overlay';
+  overlay.id = 'category-picker-overlay';
+  overlay.innerHTML = `
+    <div class="page" style="max-width:420px;width:92%;">
+      <div class="eyebrow">${projectCode}</div>
+      <h2 style="font-size:18px;">${projectName} โดดเด่นด้านใด?</h2>
+      <p class="lead" style="font-size:12.5px;">เลือก 1 ด้านที่คิดว่าโครงการนี้ควรได้รับรางวัล</p>
+      <div>
+        ${AWARD_CATEGORIES.map(cat=>`
+          <button class="btn btn-outline btn-block" style="text-align:left;justify-content:flex-start;margin-top:8px;" onclick='confirmStampVote(${JSON.stringify(uid)},${JSON.stringify(zoneId)},${JSON.stringify(projectCode)},${JSON.stringify(cat.id)})'>
+            ${cat.label}
+          </button>`).join('')}
+      </div>
+      <button class="btn btn-outline btn-block" style="margin-top:14px;" onclick="cancelCategoryPicker()">ยกเลิก (ไม่ประทับตรา)</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+function cancelCategoryPicker(){
+  const el = document.getElementById('category-picker-overlay');
+  if(el) el.remove();
+  resumeScannerAfterVote();
+}
+async function confirmStampVote(uid, zoneId, projectCode, category){
+  const el = document.getElementById('category-picker-overlay') || document.getElementById('project-picker-overlay');
   if(el) el.remove();
   const zone = ZONES.find(z=>z.id===zoneId);
   try{
-    const r = await apiPost({action:'stampZone', uid, zoneId, projectCode});
+    const r = await apiPost({action:'stampZone', uid, zoneId, projectCode, category});
     showStampToast(true, r.alreadyStamped ? `เคยประทับตราโซนนี้แล้ว` : `ประทับตรา "${zone.name}" สำเร็จ`, zone, r.participant);
     resumeScannerAfterVote();
   }catch(e){
@@ -782,11 +855,18 @@ function renderRedeem(){
         <button class="btn btn-primary" onclick="doRedeemCheck()">ตรวจสอบ</button>
       </div>
       <div id="redeem-result"></div>
+      <label style="margin-top:18px;">จำรหัสไม่ได้? ค้นหาด้วยชื่อ-นามสกุลแทน</label>
+      <input type="text" id="redeem-name">
+      <button class="btn btn-outline btn-block" onclick="doLookupByName('redeem-name','redeem-name-result','redeem')">ค้นหาด้วยชื่อ</button>
+      <div id="redeem-name-result"></div>
     </div>
   `;
 }
 async function doRedeemCheck(){
   const uid = document.getElementById('redeem-uid').value.trim();
+  await prepareRedeem(uid);
+}
+async function prepareRedeem(uid){
   const box = document.getElementById('redeem-result');
   box.innerHTML = `<div class="hint">กำลังตรวจสอบ...</div>`;
   const p = await getParticipant(uid);
@@ -802,18 +882,54 @@ async function doRedeemCheck(){
   }
   box.innerHTML = `
     <div class="ok-box">${p.name} สะสมครบ ${ZONES.length}/${ZONES.length} โซน — พร้อมรับของที่ระลึก</div>
-    <label>ความพึงพอใจต่องานในภาพรวม</label>
-    <select id="satis">
-      <option value="5">ดีมาก (5)</option><option value="4">ดี (4)</option>
-      <option value="3">ปานกลาง (3)</option><option value="2">พอใช้ (2)</option><option value="1">ควรปรับปรุง (1)</option>
-    </select>
+    ${satisfactionSurveyHtml()}
     <button class="btn btn-gold btn-block" onclick="finishRedeem('${p.uid}')">ยืนยันรับของที่ระลึก</button>
   `;
 }
+// แบบสอบถามความพึงพอใจ 5 ข้อ ใช้ร่วมกันทั้งจุดรับของที่ระลึกและก่อนรับเกียรติบัตร
+// ต้องตอบครบทุกข้อก่อนถึงจะกดยืนยันผ่านได้
+function satisfactionSurveyHtml(){
+  const qs = [
+    ['sv-q1','1. ความเหมาะสมของสถานที่จัดงาน'],
+    ['sv-q2','2. ความเหมาะสมของกิจกรรม/นิทรรศการในแต่ละโซน'],
+    ['sv-q3','3. การอำนวยความสะดวกของเจ้าหน้าที่/อาสาสมัคร'],
+    ['sv-q4','4. สถานที่/สิ่งอำนวยความสะดวก (ห้องน้ำ/ที่จอดรถ/ที่นั่ง)'],
+    ['sv-q5','5. ความพึงพอใจโดยรวมต่อการจัดงานครั้งนี้'],
+  ];
+  return `
+    <div class="survey-box">
+      <div class="survey-title">แบบสอบถามความพึงพอใจต่อการจัดงาน (กรุณาตอบให้ครบก่อนรับของ/เกียรติบัตร)</div>
+      ${qs.map(([id,label])=>`
+        <label style="margin-top:10px;">${label}</label>
+        <select id="${id}">
+          <option value="">-- เลือกคะแนน --</option>
+          <option value="5">5 ดาว (มากที่สุด)</option>
+          <option value="4">4 ดาว</option>
+          <option value="3">3 ดาว</option>
+          <option value="2">2 ดาว</option>
+          <option value="1">1 ดาว (น้อยที่สุด)</option>
+        </select>
+      `).join('')}
+    </div>
+  `;
+}
+// อ่านค่าแบบสอบถามจากฟอร์ม คืน null ถ้ายังตอบไม่ครบ (กันรับของ/เกียรติบัตรก่อนตอบแบบสอบถาม)
+function readSatisfactionSurvey(){
+  const ids = ['sv-q1','sv-q2','sv-q3','sv-q4','sv-q5'];
+  const out = {};
+  for(const id of ids){
+    const v = document.getElementById(id).value;
+    if(!v) return null;
+    out[id] = Number(v);
+  }
+  return out;
+}
 async function finishRedeem(uid){
+  const survey = readSatisfactionSurvey();
+  if(!survey){ alert('กรุณาตอบแบบสอบถามความพึงพอใจให้ครบทั้ง 5 ข้อก่อนรับของที่ระลึก'); return; }
   const p = await getParticipant(uid);
   p.redeemed = true;
-  p.satisfaction = document.getElementById('satis').value;
+  p.satisfaction = JSON.stringify(survey);
   await saveParticipant(p);
   document.getElementById('redeem-result').innerHTML = `<div class="ok-box">🎁 บันทึกสำเร็จ! มอบของที่ระลึกให้ ${p.name} ได้เลย</div>`;
 }
@@ -871,16 +987,24 @@ function renderStudyRegistered(){
       </div>
       <p class="lead" style="margin-top:16px;">บันทึกภาพหน้าจอนี้ไว้ — หลังจากศึกษาดูงานเสร็จแล้ว กลับมาที่เมนู "ส่งแบบสะท้อน รับเกียรติบัตร" แล้วสแกน QR หรือกรอกเลขทะเบียนนี้ เพื่อรับเกียรติบัตร PDF ทันที</p>
       <div class="toolbar" style="justify-content:center;">
-        <button class="btn btn-outline" onclick="downloadSvQR('${r.code}')">⬇️ ดาวน์โหลด QR</button>
+        <button class="btn btn-outline" onclick="downloadSvQR('${r.code}')">📤 แชร์/บันทึก QR</button>
         <button class="btn btn-gold" onclick="goCover()">เสร็จสิ้น</button>
       </div>
     </div>
   `;
   new QRCode(document.getElementById('sv-qrcode'), { text:r.code, width:180, height:180, colorDark:'#1F3D3B', colorLight:'#FFFDF7', correctLevel: QRCode.CorrectLevel.M });
 }
-function downloadSvQR(code){
+async function downloadSvQR(code){
   const canvas = document.querySelector('#sv-qrcode canvas');
   if(!canvas){ alert('ไม่พบ QR Code กรุณาลองใหม่อีกครั้ง'); return; }
+  try{
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    const file = new File([blob], code + '.png', { type: 'image/png' });
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      await navigator.share({ files: [file], title: code });
+      return;
+    }
+  }catch(e){ /* fallback below */ }
   const a = document.createElement('a');
   a.href = canvas.toDataURL('image/png');
   a.download = code + '.png';
@@ -899,8 +1023,35 @@ function renderStudyReflect(){
       <input type="text" id="sv-code" placeholder="SV2026-0001" style="text-transform:uppercase;">
       <div id="sv-lookup-result"></div>
       <button class="btn btn-primary btn-block" onclick="doStudyLookup()">ค้นหา</button>
+      <label style="margin-top:18px;">จำเลขทะเบียนไม่ได้? ค้นหาด้วยชื่อ-นามสกุลแทน</label>
+      <input type="text" id="sv-name">
+      <button class="btn btn-outline btn-block" onclick="doStudyLookupByName()">ค้นหาด้วยชื่อ</button>
+      <div id="sv-name-result"></div>
     </div>
   `;
+}
+async function doStudyLookupByName(){
+  const q = document.getElementById('sv-name').value.trim();
+  const box = document.getElementById('sv-name-result');
+  if(!q){ box.innerHTML = `<div class="error-box">กรุณาพิมพ์ชื่อหรือนามสกุล</div>`; return; }
+  box.innerHTML = `<div class="hint">กำลังค้นหา...</div>`;
+  try{
+    const list = await apiGet({action:'searchStudyVisitorsByName', q});
+    if(!list.length){ box.innerHTML = `<div class="error-box">ไม่พบชื่อที่ตรงกัน ลองพิมพ์สั้นลงหรือตรวจตัวสะกดอีกครั้ง</div>`; return; }
+    box.innerHTML = list.map(r => `
+      <button class="role-card" style="margin-top:8px;" onclick='selectFoundStudyVisitor(${JSON.stringify(r.code)})'>
+        <div><div class="role-title">${r.name}</div><div class="role-desc">${r.code} · ${r.institution}</div></div>
+      </button>
+    `).join('');
+  }catch(e){
+    box.innerHTML = `<div class="error-box">ค้นหาไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}</div>`;
+  }
+}
+async function selectFoundStudyVisitor(code){
+  const r = await apiGet({action:'getStudyVisitor', code});
+  if(!r) return;
+  state.studyRecord = r;
+  renderReflectForm(r);
 }
 function startSvScanner(){
   const readerDiv = document.getElementById('sv-reader');
@@ -957,6 +1108,7 @@ function renderReflectForm(r){
         <textarea id="sv-impression" rows="4" style="width:100%;padding:11px 13px;border-radius:9px;border:1.5px solid var(--paper-edge);font-family:'Sarabun';font-size:15px;background:var(--paper);color:var(--ink);"></textarea>
         <label>ความรู้ที่ได้รับจากการศึกษาดูงาน</label>
         <textarea id="sv-knowledge" rows="4" style="width:100%;padding:11px 13px;border-radius:9px;border:1.5px solid var(--paper-edge);font-family:'Sarabun';font-size:15px;background:var(--paper);color:var(--ink);"></textarea>
+        ${satisfactionSurveyHtml()}
         <div id="sv-reflect-err"></div>
         <button class="btn btn-gold btn-block" onclick="submitReflection('${r.code}')">ส่งและรับเกียรติบัตร</button>
       `}
@@ -971,9 +1123,14 @@ async function submitReflection(code){
     errBox.innerHTML = `<div class="error-box">กรุณากรอกทั้งสองช่องให้ครบถ้วน</div>`;
     return;
   }
+  const survey = readSatisfactionSurvey();
+  if(!survey){
+    errBox.innerHTML = `<div class="error-box">กรุณาตอบแบบสอบถามความพึงพอใจให้ครบทั้ง 5 ข้อก่อนรับเกียรติบัตร</div>`;
+    return;
+  }
   errBox.innerHTML = `<div class="hint">กำลังบันทึกและสร้างเกียรติบัตร...</div>`;
   try{
-    const r = await apiPost({action:'submitReflection', code, impression, knowledge});
+    const r = await apiPost({action:'submitReflection', code, impression, knowledge, satisfaction: JSON.stringify(survey)});
     state.studyRecord = r;
     await generateCertificate(r);
     renderReflectForm(r);
@@ -1079,15 +1236,87 @@ function tryPin(){
   if(String(v) === String(ADMIN_PIN)){ state.adminPin = v; state.view='admin'; render(); }
   else document.getElementById('pin-err').innerHTML = `<div class="error-box">PIN ไม่ถูกต้อง</div>`;
 }
+const AWARD_CATEGORIES = [
+  { id:'innovation', label:'ด้านนวัตกรรมยอดเยี่ยม' },
+  { id:'participation', label:'ด้านการมีส่วนร่วมยอดเยี่ยม' },
+  { id:'sustainability', label:'ด้านความยั่งยืนยอดเยี่ยม' },
+  { id:'presentation', label:'ด้านการนำเสนอยอดเยี่ยม' },
+  { id:'popular', label:'ขวัญใจมหาชน' },
+];
+// สรุปผลรางวัล 5 ด้าน — ใช้ข้อมูลคะแนนโหวตชุดเดียวกับตารางด้านบนทั้งหมด (ไม่มีระบบให้คะแนนแยก)
+// คณะกรรมการเป็นคนเลือกผู้ชนะแต่ละด้านเองจากลิสต์เดียวกัน โดย "ขวัญใจมหาชน" ระบบจะเลือกให้
+// อัตโนมัติเป็นโครงการที่มีคะแนนโหวตรวมสูงสุด เป็นค่าเริ่มต้น (แก้ไขเองได้)
+// popular = ใช้ยอดโหวตรวมของโครงการ (ไม่สนด้านที่เลือก) ส่วนอีก 4 ด้าน ใช้ยอดโหวตเฉพาะที่คนเลือก
+// ด้านนั้นตรงๆ ในป๊อปอัปตอนสแกน — ให้ค่าเริ่มต้นในแต่ละ dropdown เป็นโครงการผู้นำของด้านนั้นเลย
+// กรรมการยังปรับเปลี่ยนเองได้เสมอก่อนกดบันทึก
+async function awardsSectionHtml(voteTallyOverall, list, voteCode, voteCategory){
+  let saved = [];
+  try{ saved = await apiGet({action:'getAwards'}); }catch(e){}
+  const savedMap = {};
+  saved.forEach(a=>{ savedMap[a.category] = a.projectCode; });
+
+  const rankedOverall = voteTallyOverall.slice().sort((a,b)=>b.votes-a.votes);
+
+  function tallyForCategory(catId){
+    return PROJECTS.map(pj=>({
+      ...pj,
+      votes: list.filter(p=>{
+        const v = p.votes && p.votes[pj.zoneId];
+        return v && voteCode(v)===pj.code && voteCategory(v)===catId;
+      }).length,
+    })).sort((a,b)=>b.votes-a.votes);
+  }
+
+  return `
+    <div class="zone-manager">
+      <h3>🏅 สรุปผลรางวัล 5 ด้าน</h3>
+      <p class="hint" style="margin-top:-4px;">4 ด้านแรกนับจากที่ผู้ร่วมงานเลือกด้านนั้นตรงๆ ตอนโหวตที่บูธ ส่วน "ขวัญใจมหาชน" นับจากยอดโหวตรวมทุกด้าน — กรรมการปรับเปลี่ยนตัวเลือกเองได้ก่อนบันทึก</p>
+      ${AWARD_CATEGORIES.map(cat=>{
+        const ranked = cat.id==='popular' ? rankedOverall : tallyForCategory(cat.id);
+        const defaultCode = savedMap[cat.id] || (ranked[0] && ranked[0].votes>0 ? ranked[0].code : '');
+        const options = ranked.map(pj=>`<option value="${pj.code}" data-name="${pj.name.replace(/"/g,'&quot;')}" ${pj.code===defaultCode?'selected':''}>${pj.code} — ${pj.name} (${pj.votes} โหวต${cat.id!=='popular'?'ด้านนี้':''})</option>`).join('');
+        return `
+        <label style="margin-top:10px;">${cat.label}</label>
+        <select id="award-${cat.id}">
+          <option value="" ${!defaultCode?'selected':''}>-- ยังไม่เลือก --</option>
+          ${options}
+        </select>
+      `;
+      }).join('')}
+      <button class="btn btn-gold btn-block" style="margin-top:14px;" onclick="saveAwards()">บันทึกผลรางวัล</button>
+      <div id="awards-save-status" class="hint"></div>
+    </div>
+  `;
+}
+async function saveAwards(){
+  const statusEl = document.getElementById('awards-save-status');
+  statusEl.innerHTML = 'กำลังบันทึก...';
+  const data = AWARD_CATEGORIES.map(cat=>{
+    const sel = document.getElementById('award-'+cat.id);
+    const code = sel.value;
+    const projectName = code ? (sel.selectedOptions[0].dataset.name || '') : '';
+    return { category: cat.label, projectCode: code, projectName };
+  }).filter(a=>a.projectCode);
+  try{
+    await apiPost({action:'saveAwards', pin: state.adminPin, data});
+    statusEl.innerHTML = '<span style="color:var(--zone-env)">บันทึกผลรางวัลเรียบร้อยแล้ว</span>';
+  }catch(e){
+    statusEl.innerHTML = `<span style="color:var(--danger)">บันทึกไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}</span>`;
+  }
+}
 async function renderAdmin(){
   app.innerHTML = `${header(true)}<div class="page"><div class="hint">กำลังโหลดข้อมูล...</div></div>`;
   const list = await listParticipants();
   const totals = ZONES.map(z=>({...z, count:list.filter(p=>p.stamps[z.id]).length}));
   const complete = list.filter(p=>stampCount(p)===ZONES.length).length;
   const zoneOf = (zid)=> ZONES.find(z=>z.id===zid) || {hex:'#999', icon:''};
+  // โหวตเก็บได้ 2 รูปแบบ: ของเดิมเป็นรหัสโครงการล้วน (string) ของใหม่เป็น {code, category}
+  // ฟังก์ชันนี้แกะรหัสโครงการออกมาให้ได้เสมอ ไม่ว่าจะเป็นข้อมูลเก่าหรือใหม่
+  const voteCode = v => (v && typeof v === 'object') ? v.code : v;
+  const voteCategory = v => (v && typeof v === 'object') ? v.category : null;
   const voteTally = PROJECTS.map(pj=>({
     ...pj,
-    votes: list.filter(p=>p.votes && p.votes[pj.zoneId]===pj.code).length,
+    votes: list.filter(p=>p.votes && voteCode(p.votes[pj.zoneId])===pj.code).length,
   }));
   const totalVotes = voteTally.reduce((s,pj)=>s+pj.votes,0);
   const maxVotes = Math.max(0, ...voteTally.map(pj=>pj.votes));
@@ -1123,6 +1352,8 @@ async function renderAdmin(){
           }).join('') || '<div class="hint">ยังไม่มีโครงการตั้งไว้</div>'}
         </div>
       </div>
+
+      ${await awardsSectionHtml(voteTally, list, voteCode, voteCategory)}
 
       <div class="zone-manager">
         <h3>จัดการโซนกิจกรรม (เจ้าหน้าที่ประจำโซน)</h3>
