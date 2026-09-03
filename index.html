@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+SHEET_API_URL<!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8">
@@ -1192,17 +1192,17 @@ async function generateCertificate(r){
   ctx.fillStyle = '#143C78';
 
   // recipient name — ตัวหนาพิเศษ, ปรับขนาดอัตโนมัติถ้าชื่อยาว
-  let nameSize = 46;
+  let nameSize = 68;
   ctx.font = `700 ${nameSize}px SOVHuaHlam`;
-  while (ctx.measureText(r.name).width > W - 500 && nameSize > 24) {
+  while (ctx.measureText(r.name).width > W - 400 && nameSize > 32) {
     nameSize -= 2;
     ctx.font = `700 ${nameSize}px SOVHuaHlam`;
   }
   ctx.textAlign = 'center';
-  ctx.fillText(r.name, W/2, 570);
+  ctx.fillText(r.name, W/2, 565);
 
-  ctx.font = '700 26px SOVHuaHlam';
-  ctx.fillText(`สถาบัน: ${r.institution}`, W/2, 638);
+  ctx.font = '700 30px SOVHuaHlam';
+  ctx.fillText(`สถาบัน: ${r.institution}`, W/2, 645);
 
   // เลขที่เกียรติบัตร (มุมขวาบน) — แปลงจากเลขทะเบียน SV เดิมให้อยู่ในรูปแบบเดียวกับกลุ่มอื่นๆ
   // "กปท.ทม.นอกเมือง 000/2569" โดยไม่ต้องเรียก backend เพิ่ม เพราะเลขลำดับใน SV code
@@ -1212,8 +1212,8 @@ async function generateCertificate(r){
     ? `กปท.ทม.นอกเมือง ${String(parseInt(certNoMatch[2],10)).padStart(3,'0')}/${parseInt(certNoMatch[1],10)+543}`
     : r.code;
   ctx.textAlign = 'left';
-  ctx.font = '400 30px SOVHuaHlam';
-  ctx.fillText(certNo, 1560, 55);
+  ctx.font = '400 44px SOVHuaHlam';
+  ctx.fillText(certNo, 1490, 42);
 
   const imgData = canvas.toDataURL('image/jpeg', 0.95);
   if(!window.jspdf){ throw new Error('ไลบรารีสร้าง PDF โหลดไม่สำเร็จ (เช็คสัญญาณอินเทอร์เน็ต แล้วลองใหม่)'); }
