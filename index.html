@@ -280,7 +280,6 @@ const LOGO_B64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPIAAAEECAYAAAAS
 /* ===================== data layer — Google Sheets backend ===================== */
 // วาง Web app URL จาก Google Apps Script (ลงท้ายด้วย /exec) แทนที่ข้อความด้านล่างนี้
 const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzQWEYU2f-tMDdCV15zg6l-OcMN0xo8NIl4GjIR6HtjlCD4wQ05wZJDDEyEQWHVbYo89w/exec";
-
 // เกียรติบัตรศึกษาดูงาน — ผู้ลงนามและตำแหน่ง (แก้ตรงนี้ได้โดยตรง ไม่กระทบส่วนอื่น)
 const CERT_SIGNER_NAME = "นายธีรพล   สกุลรักษ์";
 const CERT_SIGNER_TITLE = "นายกเทศมนตรีเทศบาลเมืองนอกเมือง";
@@ -445,7 +444,7 @@ function renderCover(){
     ${header(false)}
     <div class="page cover">
       <div class="cover-badge"><span><img src="${LOGO_B64}" alt="ตราสัญลักษณ์ กปท."></span></div>
-      <h1>สมุดพาสปอร์ตตลาดนัดสุขภาพสุขภาพดิจิทัล</h1>
+      <h1>สมุดสุขภาพดิจิทัล</h1>
       <div class="sub">เดินครบ ${ZONES.length} โซน สะสมตราประทับ รับของที่ระลึก</div>
       <div class="muni">เทศบาลเมืองนอกเมือง</div>
       <div class="role-grid">
@@ -1167,6 +1166,11 @@ async function downloadCertAgain(){
 // ไว้โฟลเดอร์เดียวกับ index.html บน GitHub Pages
 const CERT_SHARED_BG_URL = './cert-bg-shared.jpg';
 
+// แปลงเลขอารบิค 0-9 เป็นเลขไทย ๐-๙ ใช้กับเลขที่เกียรติบัตรให้เข้าชุดกับข้อความอื่นบนภาพ
+function toThaiDigits(str){
+  const thaiDigits = ['๐','๑','๒','๓','๔','๕','๖','๗','๘','๙'];
+  return String(str).replace(/[0-9]/g, d => thaiDigits[+d]);
+}
 async function generateCertificate(r){
   // บังคับโหลดฟอนต์ SOVHuaHlam ให้จริงก่อนวาดลง canvas — document.fonts.ready อย่างเดียวไม่พอ
   // เพราะเบราว์เซอร์จะยังไม่โหลดฟอนต์จริงจนกว่าจะถูกใช้แสดงผลบน DOM ที่มองเห็นได้ก่อน
@@ -1210,7 +1214,7 @@ async function generateCertificate(r){
   // ก็เป็นเลขเรียงลำดับจริงอยู่แล้ว แค่แปลงรูปแบบการแสดงผล
   const certNoMatch = r.code.match(/SV(\d{4})-(\d+)/);
   const certNo = certNoMatch
-    ? `กปท.ทม.นอกเมือง ${String(parseInt(certNoMatch[2],10)).padStart(3,'0')}/${parseInt(certNoMatch[1],10)+543}`
+    ? toThaiDigits(`กปท.ทม.นอกเมือง ${String(parseInt(certNoMatch[2],10)).padStart(3,'0')}/${parseInt(certNoMatch[1],10)+543}`)
     : r.code;
   ctx.textAlign = 'left';
   ctx.font = '400 44px SOVHuaHlam';
