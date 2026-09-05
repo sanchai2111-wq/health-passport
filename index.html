@@ -170,6 +170,10 @@ input:focus,select:focus{outline:2px solid var(--gold-soft);outline-offset:1px;b
 .paffil{font-size:12.5px;color:var(--ink-soft);}
 
 .stamp-row{display:flex;gap:10px;justify-content:center;margin:18px 0 6px;flex-wrap:wrap;}
+.zone-progress-group{margin-top:14px;text-align:left;}
+.zone-progress-head{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ink);}
+.zone-progress-head .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+.zone-progress-count{margin-left:auto;font-family:'Mitr';font-weight:600;color:var(--ink-soft);}
 .stamp-dot{
   width:60px;text-align:center;font-size:11px;color:var(--ink-soft);
 }
@@ -280,6 +284,7 @@ const LOGO_B64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPIAAAEECAYAAAAS
 /* ===================== data layer — Google Sheets backend ===================== */
 // วาง Web app URL จาก Google Apps Script (ลงท้ายด้วย /exec) แทนที่ข้อความด้านล่างนี้
 const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzkjEqf45UGTW1Y2RfyliO5R-ByMKpIf1uZ0xqUe1mOGQ2Ejm9xCjdWkQEN8y1PDZQnSA/exec";
+
 // เกียรติบัตรศึกษาดูงาน — ผู้ลงนามและตำแหน่ง (แก้ตรงนี้ได้โดยตรง ไม่กระทบส่วนอื่น)
 const CERT_SIGNER_NAME = "นายธีรพล   สกุลรักษ์";
 const CERT_SIGNER_TITLE = "นายกเทศมนตรีเทศบาลเมืองนอกเมือง";
@@ -372,10 +377,14 @@ async function listParticipants(){
   out.sort((a,b)=> (a.registeredAt||'') < (b.registeredAt||'') ? -1 : 1);
   return out;
 }
+// นับ "โซนที่ยืนยันสมบูรณ์แล้ว" (ไม่ใช่จำนวนโครงการที่เยี่ยมชม) — ใช้ตัดสินสิทธิ์รับของรางวัล
+// เพราะ stamps เก็บทั้งสแตมป์รอผลระดับโครงการ (รหัสตัวใหญ่) และโซนยืนยันแล้ว (รหัสตัวเล็ก) ปนกัน
 function stampCount(p){ return ZONES.filter(z=>p.stamps[z.id]).length; }
+// นับจำนวนโครงการที่เยี่ยมชมแล้ว (สแตมป์รอผล) ภายในโซนหนึ่งๆ ใช้เช็คเกณฑ์ 80% ก่อนยืนยันโซน
+function projectVisitCountInZone(p, zoneId){ return PROJECTS.filter(pj=>pj.zoneId===zoneId && p.stamps[pj.code]).length; }
 
 /* ===================== app state / router ===================== */
-const state = { view:'cover', zone:null, lookupUid:'', message:null, adminOk:false, html5qr:null };
+const state = { view:'cover', zone:null, project:null, confirmZone:null, lookupUid:'', message:null, adminOk:false, html5qr:null };
 const app = document.getElementById('app');
 
 function renderSetupNotice(){
@@ -430,6 +439,7 @@ async function render(){
   if(state.view==='registered') return renderRegistered();
   if(state.view==='lookup') return renderLookup();
   if(state.view==='scan') return renderScan();
+  if(state.view==='zone-confirm') return renderZoneConfirm();
   if(state.view==='redeem') return renderRedeem();
   if(state.view==='study-register') return renderStudyRegister();
   if(state.view==='study-registered') return renderStudyRegistered();
@@ -444,7 +454,7 @@ function renderCover(){
     ${header(false)}
     <div class="page cover">
       <div class="cover-badge"><span><img src="${LOGO_B64}" alt="ตราสัญลักษณ์ กปท."></span></div>
-      <h1>สมุดพาสปอร์ตตลาดสุขภาพดิจิทัล</h1>
+      <h1>สมุดพาสปอร์ตตลาดนัดสุขภาพดิจิทัล</h1>
       <div class="sub">เดินครบ ${ZONES.length} โซน สะสมตราประทับ รับของที่ระลึก</div>
       <div class="muni">เทศบาลเมืองนอกเมือง</div>
       <div class="role-grid">
@@ -456,9 +466,13 @@ function renderCover(){
           <div class="role-ic" style="background:var(--zone-env)">🎫</div>
           <div><div class="role-title">บัตรผ่านของฉัน</div><div class="role-desc">ค้นหาด้วยรหัส เพื่อดู QR และตราประทับ</div></div>
         </button>
-        <button class="role-card" onclick="state.view='scan';state.zone=null;render()">
+        <button class="role-card" onclick="state.view='scan';state.project=null;render()">
           <div class="role-ic" style="background:var(--zone-mental)">📷</div>
-          <div><div class="role-title">เจ้าหน้าที่ประจำโซน</div><div class="role-desc">สแกน QR เพื่อประทับตราประจำโซน</div></div>
+          <div><div class="role-title">เจ้าหน้าที่ประจำบูธโครงการ</div><div class="role-desc">สแกน QR บันทึกการเยี่ยมชม (ขั้นที่ 1)</div></div>
+        </button>
+        <button class="role-card" onclick="state.view='zone-confirm';state.confirmZone=null;render()">
+          <div class="role-ic" style="background:#8A4B6B">✅</div>
+          <div><div class="role-title">เจ้าหน้าที่ประจำโซน</div><div class="role-desc">ยืนยันโซน + รับโหวต (ขั้นที่ 2 — ทำให้มีผลจริง)</div></div>
         </button>
         <button class="role-card" onclick="state.view='redeem';render()">
           <div class="role-ic" style="background:var(--zone-ltc)">🎁</div>
@@ -586,19 +600,37 @@ async function downloadQR(uid){
   a.click();
 }
 function stampRowHtml(p){
-  const n = stampCount(p);
-  const dots = ZONES.map(z=>{
-    const done = p.stamps[z.id];
-    return `<div class="stamp-dot">
-      <div class="stamp-circ ${done?'done':''}" style="${done?`background:${z.hex};border-color:${z.hex};`:''}">${done?'✓':z.icon}</div>
-      ${z.name}
-    </div>`;
+  const n = stampCount(p); // จำนวนโซนที่ยืนยันสมบูรณ์แล้ว
+  const groups = ZONES.map(z=>{
+    const projectsInZone = PROJECTS.filter(pj=>pj.zoneId===z.id);
+    const visited = projectVisitCountInZone(p, z.id);
+    const threshold = Math.ceil(projectsInZone.length * 0.8);
+    const confirmed = !!p.stamps[z.id];
+    const eligible = visited >= threshold;
+    return `
+      <div class="zone-progress-group">
+        <div class="zone-progress-head">
+          <span class="dot" style="background:${z.hex}"></span>
+          <span>${z.icon} ${z.name}</span>
+          <span class="zone-progress-count">${confirmed ? '✅ ยืนยันแล้ว' : `${visited}/${projectsInZone.length} (ต้องการ ${threshold})`}</span>
+        </div>
+        <div class="stamp-row">
+          ${projectsInZone.map(pj=>{
+            const done = p.stamps[pj.code];
+            return `<div class="stamp-dot">
+              <div class="stamp-circ ${done?'done':''}" style="${done?`background:${z.hex};border-color:${z.hex};`:''}">${done?'✓':''}</div>
+              <span style="font-size:9px;">${pj.code}</span>
+            </div>`;
+          }).join('')}
+        </div>
+        ${!confirmed && eligible ? `<div class="hint" style="color:var(--zone-env);margin-top:2px;">ครบเกณฑ์แล้ว — ไปยืนยันโซนที่เจ้าหน้าที่ประจำโซนได้เลย</div>` : ''}
+      </div>`;
   }).join('');
   let unlock = '';
   if(n===ZONES.length){
-    unlock = `<div class="unlock-box"><div class="t">🎉 ครบทุกโซนแล้ว!</div><div class="d">นำ QR นี้ไปรับของที่ระลึกและร่วมโหวตรางวัลได้ที่จุดรับของที่ระลึก</div></div>`;
+    unlock = `<div class="unlock-box"><div class="t">🎉 ยืนยันครบทุกโซนแล้ว!</div><div class="d">นำ QR นี้ไปรับของที่ระลึกได้ที่จุดรับของที่ระลึก</div></div>`;
   }
-  return `<div class="stamp-row">${dots}</div><div class="progress-line">สะสมแล้ว ${n} / ${ZONES.length} โซน</div>${unlock}`;
+  return `${groups}<div class="progress-line">ยืนยันสมบูรณ์แล้ว ${n} / ${ZONES.length} โซน</div>${unlock}`;
 }
 
 /* ---------- lookup ---------- */
@@ -662,19 +694,23 @@ async function selectFoundParticipant(uid, targetView){
 
 /* ---------- booth scanner ---------- */
 function renderScan(){
+  const zoneGroups = ZONES.map(z=>{
+    const opts = PROJECTS.filter(pj=>pj.zoneId===z.id)
+      .map(pj=>`<option value="${pj.code}" ${state.project===pj.code?'selected':''}>${pj.code} — ${pj.name}</option>`).join('');
+    return opts ? `<optgroup label="${z.icon} ${z.name}">${opts}</optgroup>` : '';
+  }).join('');
   app.innerHTML = `
     ${header(true)}
     <div class="page">
-      <div class="eyebrow">เจ้าหน้าที่ประจำโซน</div>
+      <div class="eyebrow">เจ้าหน้าที่ประจำบูธโครงการ</div>
       <h2>สแกน QR ประทับตรา</h2>
-      <p class="lead">เลือกโซนของท่านก่อนเริ่มสแกน QR ของผู้เข้าร่วมงาน</p>
-      <div class="zone-select">
-        ${ZONES.map(z=>`
-          <button class="zone-btn ${state.zone===z.id?'active':''}" onclick="pickZone('${z.id}')">
-            <span class="dot" style="background:${z.hex}"></span>${z.name}
-          </button>`).join('')}
-      </div>
-      ${state.zone ? `
+      <p class="lead">เลือกโครงการของบูธท่านก่อนเริ่มสแกน — สแกนแล้วนับเป็นการเยี่ยมชม (ยังไม่มีผลรางวัลจนกว่าจะยืนยันที่เจ้าหน้าที่ประจำโซน)</p>
+      <label>โครงการประจำบูธนี้</label>
+      <select id="project-select" onchange="pickProject(this.value)">
+        <option value="">-- เลือกโครงการ --</option>
+        ${zoneGroups}
+      </select>
+      ${state.project ? `
         <div id="reader"></div>
         <div class="scan-status" id="scan-status">กำลังเปิดกล้อง...</div>
         <div class="manual-fallback">
@@ -684,22 +720,23 @@ function renderScan(){
             <button class="btn btn-primary" onclick="manualStamp()">ประทับตรา</button>
           </div>
         </div>
-      ` : `<div class="hint">เลือกโซนด้านบนเพื่อเริ่มใช้กล้องสแกน</div>`}
+      ` : `<div class="hint">เลือกโครงการด้านบนเพื่อเริ่มใช้กล้องสแกน</div>`}
     </div>
   `;
-  if(state.zone) startScanner();
+  if(state.project) startScanner();
 }
-function pickZone(id){ stopScanner(); state.zone=id; renderScan(); }
+function pickProject(code){ stopScanner(); state.project=code; renderScan(); }
 
-function startScanner(){
+function startScanner(onScan){
   stopScanner();
+  const cb = onScan || handleScanResult;
   const statusEl = ()=>document.getElementById('scan-status');
   try{
     state.html5qr = new Html5Qrcode("reader");
     state.html5qr.start(
       { facingMode:"environment" },
       { fps:10, qrbox:230 },
-      (decodedText)=>{ handleScanResult(decodedText.trim()); },
+      (decodedText)=>{ cb(decodedText.trim()); },
       ()=>{}
     ).catch(err=>{ if(statusEl()) statusEl().innerHTML = `ไม่สามารถเปิดกล้องได้ — ใช้ช่องกรอกรหัสด้านล่างแทน`; });
   }catch(e){
@@ -720,115 +757,134 @@ async function handleScanResult(uid){
     setTimeout(()=>{scanLock=false;}, 1200);
     return;
   }
-  const zone = ZONES.find(z=>z.id===state.zone);
-  const already = p.stamps[zone.id];
+  const project = PROJECTS.find(pj=>pj.code===state.project);
+  const zone = ZONES.find(z=>z.id===project.zoneId);
+  const already = p.stamps[project.code];
   if(already){
-    showStampToast(true, `${p.name} — เคยประทับตราโซนนี้แล้ว`, zone, p);
+    showStampToast(true, `${p.name} — เคยเยี่ยมชมโครงการนี้แล้ว`, zone, p);
     setTimeout(()=>{scanLock=false;}, 1600);
     return;
   }
-  // New visit to this zone — ask which project impressed them most before stamping.
+  // สแกนที่บูธโครงการ = แค่ "สแตมป์รอผล" ยืนยันว่ามาเยี่ยมชมจริง ยังไม่มีผลต่อรางวัลใดๆ
+  // ต้องไปยืนยันที่จุดเจ้าหน้าที่ประจำโซนอีกครั้งหลังเยี่ยมชมครบเกณฑ์ของโซนนั้นก่อน ถึงจะมีผลจริง
   pauseScanner();
-  renderProjectPicker(p, zone);
+  try{
+    const r = await apiPost({action:'stampProject', uid, projectCode: project.code});
+    showStampToast(true, r.alreadyStamped ? `เคยเยี่ยมชมโครงการนี้แล้ว` : `บันทึกการเยี่ยมชม "${project.name}" สำเร็จ (ยังไม่มีผลจนกว่าจะยืนยันที่จุดเจ้าหน้าที่ประจำโซน)`, zone, r.participant);
+  }catch(e){
+    showStampToast(false, `บันทึกไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}`, zone);
+  }
+  resumeScannerAfterVote();
 }
 
 function pauseScanner(){ try{ if(state.html5qr) state.html5qr.pause(true); }catch(e){} }
 function resumeScannerAfterVote(){ try{ if(state.html5qr) state.html5qr.resume(); }catch(e){} scanLock = false; }
 
-function renderProjectPicker(p, zone){
-  const projects = PROJECTS.filter(pj=>pj.zoneId===zone.id);
+/* ---------- ขั้นที่ 2: เจ้าหน้าที่ประจำโซน — ยืนยันโซน + รับโหวต ---------- */
+function renderZoneConfirm(){
+  app.innerHTML = `
+    ${header(true)}
+    <div class="page">
+      <div class="eyebrow">เจ้าหน้าที่ประจำโซน</div>
+      <h2>ยืนยันโซน + รับโหวต</h2>
+      <p class="lead">เลือกโซนของท่านก่อนเริ่มสแกน — ใช้กับผู้ที่เยี่ยมชมโครงการในโซนนี้ครบเกณฑ์แล้วเท่านั้น (อย่างน้อย 80%)</p>
+      <div class="zone-select">
+        ${ZONES.map(z=>`
+          <button class="zone-btn ${state.confirmZone===z.id?'active':''}" onclick="pickConfirmZone('${z.id}')">
+            <span class="dot" style="background:${z.hex}"></span>${z.name}
+          </button>`).join('')}
+      </div>
+      ${state.confirmZone ? `
+        <div id="reader"></div>
+        <div class="scan-status" id="scan-status">กำลังเปิดกล้อง...</div>
+        <div class="manual-fallback">
+          <label>หรือกรอกรหัสประจำตัวด้วยตนเอง</label>
+          <div class="search-row">
+            <input type="text" id="manual-uid" placeholder="KPT2026-001" style="text-transform:uppercase;">
+            <button class="btn btn-primary" onclick="manualZoneConfirm()">ตรวจสอบ</button>
+          </div>
+        </div>
+      ` : `<div class="hint">เลือกโซนด้านบนเพื่อเริ่มใช้กล้องสแกน</div>`}
+    </div>
+  `;
+  if(state.confirmZone) startScanner(handleZoneConfirmScan);
+}
+function pickConfirmZone(id){ stopScanner(); state.confirmZone=id; renderZoneConfirm(); }
+function manualZoneConfirm(){
+  const v = document.getElementById('manual-uid').value.trim();
+  if(v) handleZoneConfirmScan(v);
+}
+let zoneConfirmLock=false;
+async function handleZoneConfirmScan(uid){
+  if(zoneConfirmLock) return;
+  zoneConfirmLock = true;
+  const zone = ZONES.find(z=>z.id===state.confirmZone);
+  try{
+    const progress = await apiGet({action:'getZoneProgress', uid, zoneId: zone.id});
+    if(progress.error){
+      showStampToast(false, progress.error, zone);
+      setTimeout(()=>{zoneConfirmLock=false;}, 1400);
+      return;
+    }
+    if(progress.alreadyConfirmed){
+      showStampToast(true, `${progress.name} — ยืนยันโซนนี้ไปแล้ว`, zone);
+      setTimeout(()=>{zoneConfirmLock=false;}, 1600);
+      return;
+    }
+    if(!progress.eligible){
+      showStampToast(false, `${progress.name} เยี่ยมชมได้ ${progress.visitedCount}/${progress.total} โครงการ (ต้องการอย่างน้อย ${progress.threshold}) — ยังยืนยันไม่ได้`, zone);
+      setTimeout(()=>{zoneConfirmLock=false;}, 2200);
+      return;
+    }
+    pauseScanner();
+    renderZoneVotePicker(progress, zone);
+  }catch(e){
+    showStampToast(false, `ตรวจสอบไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}`, zone);
+    setTimeout(()=>{zoneConfirmLock=false;}, 1600);
+  }
+}
+function renderZoneVotePicker(progress, zone){
   const overlay = document.createElement('div');
   overlay.className = 'stamp-overlay';
-  overlay.id = 'project-picker-overlay';
+  overlay.id = 'zone-vote-overlay';
   overlay.innerHTML = `
     <div class="page" style="max-width:420px;width:92%;max-height:80vh;overflow:auto;">
       <div class="eyebrow">${zone.icon} ${zone.name}</div>
-      <h2 style="font-size:18px;">${p.name} ประทับใจโครงการไหนที่สุด?</h2>
-      <p class="lead" style="font-size:12.5px;">เลือก 1 โครงการแทนผู้เข้าร่วมงาน แล้วจึงประทับตรา</p>
+      <h2 style="font-size:18px;">${progress.name} เยี่ยมชมครบเกณฑ์แล้ว (${progress.visitedCount}/${progress.total})</h2>
+      <p class="lead" style="font-size:12.5px;">เลือกโครงการที่ประทับใจที่สุดในโซนนี้ แล้วกดยืนยัน — หลังจากนี้โซนนี้จะมีผลสมบูรณ์ทันที</p>
       <div>
-        ${projects.length ? projects.map(pj=>`
-          <button class="btn btn-outline btn-block" style="text-align:left;justify-content:flex-start;margin-top:8px;" onclick='showCategoryPicker(${JSON.stringify(p.uid)},${JSON.stringify(zone.id)},${JSON.stringify(pj.code)},${JSON.stringify(pj.name)})'>
-            <b>${pj.code}</b>&nbsp; ${pj.name}
-          </button>`).join('') : '<div class="hint">โซนนี้ยังไม่มีโครงการย่อยตั้งไว้ — จะประทับตราโดยไม่โหวตโครงการ</div>'}
-      </div>
-      ${!projects.length ? `<button class="btn btn-gold btn-block" onclick="confirmStampVote('${p.uid}','${zone.id}','','')">ประทับตราต่อ</button>` : ''}
-      <button class="btn btn-outline btn-block" style="margin-top:14px;" onclick="cancelProjectPicker()">ยกเลิก (ไม่ประทับตรา)</button>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-}
-function cancelProjectPicker(){
-  const el = document.getElementById('project-picker-overlay');
-  if(el) el.remove();
-  resumeScannerAfterVote();
-}
-// ป๊อปอัปที่ 2 — หลังเลือกโครงการแล้ว ให้เลือกต่อว่าโครงการนี้โดดเด่นด้านใด (เลือกได้ 1 ด้าน)
-// เพื่อให้ผลรางวัล 5 ด้านมาจากข้อมูลโหวตจริงแยกตามด้าน ไม่ต้องให้กรรมการตีความจากคะแนนรวมอีกต่อไป
-function showCategoryPicker(uid, zoneId, projectCode, projectName){
-  const projectOverlay = document.getElementById('project-picker-overlay');
-  if(projectOverlay) projectOverlay.remove();
-  const overlay = document.createElement('div');
-  overlay.className = 'stamp-overlay';
-  overlay.id = 'category-picker-overlay';
-  overlay.innerHTML = `
-    <div class="page" style="max-width:420px;width:92%;">
-      <div class="eyebrow">${projectCode}</div>
-      <h2 style="font-size:18px;">${projectName} โดดเด่นด้านใด?</h2>
-      <p class="lead" style="font-size:12.5px;">เลือก 1 ด้านที่คิดว่าโครงการนี้ควรได้รับรางวัล</p>
-      <div>
-        ${AWARD_CATEGORIES.map(cat=>`
-          <button class="btn btn-outline btn-block" style="text-align:left;justify-content:flex-start;margin-top:8px;" onclick='confirmStampVote(${JSON.stringify(uid)},${JSON.stringify(zoneId)},${JSON.stringify(projectCode)},${JSON.stringify(cat.id)})'>
-            ${cat.label}
+        ${progress.projects.map(pj=>`
+          <button class="btn btn-outline btn-block" style="text-align:left;justify-content:flex-start;margin-top:8px;${pj.visited?'':'opacity:.5;'}" onclick='submitZoneConfirm(${JSON.stringify(progress.uid)},${JSON.stringify(zone.id)},${JSON.stringify(pj.code)})'>
+            <b>${pj.code}</b>&nbsp; ${pj.name} ${pj.visited?'✓':'(ยังไม่ได้เยี่ยมชม)'}
           </button>`).join('')}
       </div>
-      <button class="btn btn-outline btn-block" style="margin-top:14px;" onclick="cancelCategoryPicker()">ยกเลิก (ไม่ประทับตรา)</button>
+      <button class="btn btn-outline btn-block" style="margin-top:14px;" onclick="cancelZoneVote()">ยกเลิก (ยังไม่ยืนยันโซน)</button>
     </div>
   `;
   document.body.appendChild(overlay);
 }
-function cancelCategoryPicker(){
-  const el = document.getElementById('category-picker-overlay');
+function cancelZoneVote(){
+  const el = document.getElementById('zone-vote-overlay');
   if(el) el.remove();
-  resumeScannerAfterVote();
+  try{ if(state.html5qr) state.html5qr.resume(); }catch(e){}
+  zoneConfirmLock = false;
 }
-async function confirmStampVote(uid, zoneId, projectCode, category){
-  const el = document.getElementById('category-picker-overlay') || document.getElementById('project-picker-overlay');
+async function submitZoneConfirm(uid, zoneId, votedProjectCode){
+  const el = document.getElementById('zone-vote-overlay');
   if(el) el.remove();
   const zone = ZONES.find(z=>z.id===zoneId);
   try{
-    const r = await apiPost({action:'stampZone', uid, zoneId, projectCode, category});
-    showStampToast(true, r.alreadyStamped ? `เคยประทับตราโซนนี้แล้ว` : `ประทับตรา "${zone.name}" สำเร็จ`, zone, r.participant);
-    resumeScannerAfterVote();
+    const r = await apiPost({action:'confirmZone', uid, zoneId, votedProjectCode});
+    if(r.error){
+      showStampToast(false, r.error, zone);
+    }else{
+      showStampToast(true, r.alreadyConfirmed ? `ยืนยันโซนนี้ไปแล้ว` : `ยืนยันโซน "${zone.name}" สมบูรณ์!`, zone, r.participant);
+    }
   }catch(e){
-    showStampError(uid, zoneId, projectCode, (e&&e.message)||'ไม่ทราบสาเหตุ');
+    showStampToast(false, `บันทึกไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}`, zone);
   }
-}
-function showStampError(uid, zoneId, projectCode, message){
-  const overlay = document.createElement('div');
-  overlay.className = 'stamp-overlay';
-  overlay.id = 'stamp-error-overlay';
-  overlay.innerHTML = `
-    <div class="page" style="max-width:360px;width:90%;text-align:center;">
-      <div style="font-size:32px;">⚠️</div>
-      <h2 style="font-size:16px;">บันทึกไม่สำเร็จ</h2>
-      <p class="lead" style="font-size:13px;">${message}</p>
-      <div class="toolbar" style="justify-content:center;">
-        <button class="btn btn-gold" onclick="retryStampVote('${uid}','${zoneId}','${projectCode}')">ลองใหม่</button>
-        <button class="btn btn-outline" onclick="dismissStampError()">ปิด (ไม่ประทับตรา)</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-}
-function dismissStampError(){
-  const el = document.getElementById('stamp-error-overlay');
-  if(el) el.remove();
-  resumeScannerAfterVote();
-}
-async function retryStampVote(uid, zoneId, projectCode){
-  const el = document.getElementById('stamp-error-overlay');
-  if(el) el.remove();
-  await confirmStampVote(uid, zoneId, projectCode);
+  try{ if(state.html5qr) state.html5qr.resume(); }catch(e){}
+  zoneConfirmLock = false;
 }
 
 function showStampToast(ok, text, zone, p){
@@ -855,7 +911,7 @@ function renderRedeem(){
     <div class="page">
       <div class="eyebrow">จุดรับของที่ระลึก</div>
       <h2>ตรวจสิทธิและรับของรางวัล</h2>
-      <p class="lead">กรอกหรือสแกนรหัสประจำตัว เพื่อตรวจสอบว่าสะสมครบทุกโซนแล้วหรือไม่</p>
+      <p class="lead">กรอกหรือสแกนรหัสประจำตัว เพื่อตรวจสอบว่ายืนยันครบทุกโซนแล้วหรือไม่</p>
       <label>รหัสประจำตัว</label>
       <div class="search-row">
         <input type="text" id="redeem-uid" placeholder="KPT2026-001" style="text-transform:uppercase;">
@@ -880,7 +936,7 @@ async function prepareRedeem(uid){
   if(!p){ box.innerHTML = `<div class="error-box">ไม่พบรหัส ${uid.toUpperCase()}</div>`; return; }
   const n = stampCount(p);
   if(n < ZONES.length){
-    box.innerHTML = `<div class="error-box">${p.name} สะสมได้ ${n}/${ZONES.length} โซน — ยังไม่ครบสิทธิ์รับของที่ระลึก</div>`;
+    box.innerHTML = `<div class="error-box">${p.name} ยืนยันสมบูรณ์ได้ ${n}/${ZONES.length} โซน — ยังไม่ครบสิทธิ์รับของที่ระลึก</div>`;
     return;
   }
   if(p.redeemed){
@@ -888,7 +944,7 @@ async function prepareRedeem(uid){
     return;
   }
   box.innerHTML = `
-    <div class="ok-box">${p.name} สะสมครบ ${ZONES.length}/${ZONES.length} โซน — พร้อมรับของที่ระลึก</div>
+    <div class="ok-box">${p.name} ยืนยันครบ ${ZONES.length}/${ZONES.length} โซน — พร้อมรับของที่ระลึก</div>
     ${satisfactionSurveyHtml()}
     <button class="btn btn-gold btn-block" onclick="finishRedeem('${p.uid}')">ยืนยันรับของที่ระลึก</button>
   `;
@@ -1280,37 +1336,30 @@ const AWARD_CATEGORIES = [
 // popular = ใช้ยอดโหวตรวมของโครงการ (ไม่สนด้านที่เลือก) ส่วนอีก 4 ด้าน ใช้ยอดโหวตเฉพาะที่คนเลือก
 // ด้านนั้นตรงๆ ในป๊อปอัปตอนสแกน — ให้ค่าเริ่มต้นในแต่ละ dropdown เป็นโครงการผู้นำของด้านนั้นเลย
 // กรรมการยังปรับเปลี่ยนเองได้เสมอก่อนกดบันทึก
-async function awardsSectionHtml(voteTallyOverall, list, voteCode, voteCategory){
+// สแกนที่บูธโครงการ = โหวตในตัวอยู่แล้ว จึงมีคะแนนโหวตชุดเดียว (ไม่แยกตามด้าน) — คณะกรรมการ
+// เลือกผู้ชนะทั้ง 5 ด้านเองจากอันดับคะแนนโหวตชุดนี้ โดย "ขวัญใจมหาชน" ตั้งค่าเริ่มต้นเป็น
+// โครงการคะแนนสูงสุดให้อัตโนมัติ ส่วนอีก 4 ด้านปล่อยว่างให้กรรมการเลือกเอง
+async function awardsSectionHtml(voteTallyOverall){
   let saved = [];
   try{ saved = await apiGet({action:'getAwards'}); }catch(e){}
   const savedMap = {};
   saved.forEach(a=>{ savedMap[a.category] = a.projectCode; });
 
-  const rankedOverall = voteTallyOverall.slice().sort((a,b)=>b.votes-a.votes);
-
-  function tallyForCategory(catId){
-    return PROJECTS.map(pj=>({
-      ...pj,
-      votes: list.filter(p=>{
-        const v = p.votes && p.votes[pj.zoneId];
-        return v && voteCode(v)===pj.code && voteCategory(v)===catId;
-      }).length,
-    })).sort((a,b)=>b.votes-a.votes);
-  }
+  const ranked = voteTallyOverall.slice().sort((a,b)=>b.votes-a.votes);
+  const options = ranked.map(pj=>`<option value="${pj.code}" data-name="${pj.name.replace(/"/g,'&quot;')}">${pj.code} — ${pj.name} (${pj.votes} โหวต)</option>`).join('');
 
   return `
     <div class="zone-manager">
       <h3>🏅 สรุปผลรางวัล 5 ด้าน</h3>
-      <p class="hint" style="margin-top:-4px;">4 ด้านแรกนับจากที่ผู้ร่วมงานเลือกด้านนั้นตรงๆ ตอนโหวตที่บูธ ส่วน "ขวัญใจมหาชน" นับจากยอดโหวตรวมทุกด้าน — กรรมการปรับเปลี่ยนตัวเลือกเองได้ก่อนบันทึก</p>
+      <p class="hint" style="margin-top:-4px;">ใช้คะแนนโหวตชุดเดียวกัน (นับจากยอดคนที่เข้าชม+สแกนที่บูธ) คณะกรรมการเลือกผู้ชนะแต่ละด้านเอง — "ขวัญใจมหาชน" ตั้งค่าเริ่มต้นเป็นโครงการคะแนนสูงสุดให้อัตโนมัติ</p>
       ${AWARD_CATEGORIES.map(cat=>{
-        const ranked = cat.id==='popular' ? rankedOverall : tallyForCategory(cat.id);
-        const defaultCode = savedMap[cat.id] || (ranked[0] && ranked[0].votes>0 ? ranked[0].code : '');
-        const options = ranked.map(pj=>`<option value="${pj.code}" data-name="${pj.name.replace(/"/g,'&quot;')}" ${pj.code===defaultCode?'selected':''}>${pj.code} — ${pj.name} (${pj.votes} โหวต${cat.id!=='popular'?'ด้านนี้':''})</option>`).join('');
+        const defaultCode = savedMap[cat.id] || (cat.id==='popular' && ranked[0] && ranked[0].votes>0 ? ranked[0].code : '');
+        const optsWithSelected = ranked.map(pj=>`<option value="${pj.code}" data-name="${pj.name.replace(/"/g,'&quot;')}" ${pj.code===defaultCode?'selected':''}>${pj.code} — ${pj.name} (${pj.votes} โหวต)</option>`).join('');
         return `
         <label style="margin-top:10px;">${cat.label}</label>
         <select id="award-${cat.id}">
           <option value="" ${!defaultCode?'selected':''}>-- ยังไม่เลือก --</option>
-          ${options}
+          ${optsWithSelected}
         </select>
       `;
       }).join('')}
@@ -1338,16 +1387,18 @@ async function saveAwards(){
 async function renderAdmin(){
   app.innerHTML = `${header(true)}<div class="page"><div class="hint">กำลังโหลดข้อมูล...</div></div>`;
   const list = await listParticipants();
-  const totals = ZONES.map(z=>({...z, count:list.filter(p=>p.stamps[z.id]).length}));
+  const totals = ZONES.map(z=>{
+    // นับคนที่ "ยืนยันโซนนี้สมบูรณ์แล้ว" เท่านั้น (ไม่ใช่แค่เยี่ยมชมบางโครงการ)
+    const count = list.filter(p=>p.stamps[z.id]).length;
+    return {...z, count};
+  });
   const complete = list.filter(p=>stampCount(p)===ZONES.length).length;
   const zoneOf = (zid)=> ZONES.find(z=>z.id===zid) || {hex:'#999', icon:''};
-  // โหวตเก็บได้ 2 รูปแบบ: ของเดิมเป็นรหัสโครงการล้วน (string) ของใหม่เป็น {code, category}
-  // ฟังก์ชันนี้แกะรหัสโครงการออกมาให้ได้เสมอ ไม่ว่าจะเป็นข้อมูลเก่าหรือใหม่
-  const voteCode = v => (v && typeof v === 'object') ? v.code : v;
-  const voteCategory = v => (v && typeof v === 'object') ? v.category : null;
+  // โหวตนับจาก votes_json ที่บันทึกตอนยืนยันโซน (เจ้าหน้าที่ประจำโซน) เท่านั้น — เป็นโหวตที่มีข้อมูล
+  // จริงประกอบเสมอ เพราะยืนยันได้ก็ต่อเมื่อเยี่ยมชมครบเกณฑ์ 80% ของโซนนั้นแล้ว
   const voteTally = PROJECTS.map(pj=>({
     ...pj,
-    votes: list.filter(p=>p.votes && voteCode(p.votes[pj.zoneId])===pj.code).length,
+    votes: list.filter(p=>p.votes && p.votes[pj.zoneId]===pj.code).length,
   }));
   const totalVotes = voteTally.reduce((s,pj)=>s+pj.votes,0);
   const maxVotes = Math.max(0, ...voteTally.map(pj=>pj.votes));
@@ -1360,7 +1411,7 @@ async function renderAdmin(){
       <h2>ภาพรวมงานมหกรรมตลาดนัดสุขภาพ</h2>
       <div class="stat-grid">
         <div class="stat-card"><div class="stat-num">${list.length}</div><div class="stat-lbl">ผู้ลงทะเบียนทั้งหมด</div></div>
-        <div class="stat-card"><div class="stat-num">${complete}</div><div class="stat-lbl">สะสมครบทุกโซน</div></div>
+        <div class="stat-card"><div class="stat-num">${complete}</div><div class="stat-lbl">ยืนยันครบทุกโซน</div></div>
         <div class="stat-card"><div class="stat-num">${list.filter(p=>p.redeemed).length}</div><div class="stat-lbl">รับของที่ระลึกแล้ว</div></div>
         <div class="stat-card"><div class="stat-num">${list.length ? Math.round(complete/list.length*100) : 0}%</div><div class="stat-lbl">อัตราสำเร็จครบโซน</div></div>
       </div>
@@ -1384,7 +1435,7 @@ async function renderAdmin(){
         </div>
       </div>
 
-      ${await awardsSectionHtml(voteTally, list, voteCode, voteCategory)}
+      ${await awardsSectionHtml(voteTally)}
 
       <div class="zone-manager">
         <h3>จัดการโซนกิจกรรม (เจ้าหน้าที่ประจำโซน)</h3>
@@ -1458,8 +1509,12 @@ function filterAdminTable(){
 }
 async function exportCsv(){
   const list = await listParticipants();
-  const rows = [['uid','name','phone','affiliation','registeredAt', ...ZONES.map(z=>z.id), 'redeemed','satisfaction', ...ZONES.map(z=>'vote_'+z.id)]];
-  list.forEach(p=>rows.push([p.uid,p.name,p.phone,p.affil,p.registeredAt, ...ZONES.map(z=>p.stamps[z.id]?1:0), p.redeemed?1:0, p.satisfaction||'', ...ZONES.map(z=>(p.votes&&p.votes[z.id])||'')]));
+  const rows = [['uid','name','phone','affiliation','registeredAt',
+    ...PROJECTS.map(pj=>'visit_'+pj.code), ...ZONES.map(z=>'confirmed_'+z.id), ...ZONES.map(z=>'vote_'+z.id),
+    'redeemed','satisfaction']];
+  list.forEach(p=>rows.push([p.uid,p.name,p.phone,p.affil,p.registeredAt,
+    ...PROJECTS.map(pj=>p.stamps[pj.code]?1:0), ...ZONES.map(z=>p.stamps[z.id]?1:0), ...ZONES.map(z=>(p.votes&&p.votes[z.id])||''),
+    p.redeemed?1:0, p.satisfaction||'']));
   const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob(["\uFEFF"+csv], {type:'text/csv;charset=utf-8;'});
   const a = document.createElement('a');
