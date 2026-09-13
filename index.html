@@ -489,7 +489,10 @@ async function renderRegister(){
   app.innerHTML = `${header(true)}<div class="page"><div class="hint">กำลังตรวจสอบสถานะระบบ...</div></div>`;
   let cfg = {};
   try{ cfg = await apiGet({action:'getConfig'}); }catch(e){}
-  if(cfg.registrationOpen === 'false'){
+  // Google Sheets มักแปลงข้อความ "false"/"true" ในเซลล์เป็นบูลีนจริงให้อัตโนมัติ
+  // ต้องเช็คทั้งสองแบบ (ค่าที่เป็น string และที่ถูกแปลงเป็น boolean แล้ว) เหมือนฟิลด์ redeemed
+  const isRegClosed = cfg.registrationOpen === 'false' || cfg.registrationOpen === false;
+  if(isRegClosed){
     app.innerHTML = `
       ${header(true)}
       <div class="page" style="text-align:center;">
@@ -1399,6 +1402,9 @@ async function renderAdmin(){
   app.innerHTML = `${header(true)}<div class="page"><div class="hint">กำลังโหลดข้อมูล...</div></div>`;
   const list = await listParticipants();
   const cfg = await apiGet({action:'getConfig'});
+  // Google Sheets มักแปลงข้อความ "false"/"true" ในเซลล์เป็นบูลีนจริงให้อัตโนมัติ
+  // ต้องเช็คทั้งสองแบบ (ค่าที่เป็น string และที่ถูกแปลงเป็น boolean แล้ว) เหมือนฟิลด์ redeemed
+  const isRegClosed = cfg.registrationOpen === 'false' || cfg.registrationOpen === false;
   const totals = ZONES.map(z=>{
     // นับคนที่ "ยืนยันโซนนี้สมบูรณ์แล้ว" เท่านั้น (ไม่ใช่แค่เยี่ยมชมบางโครงการ)
     const count = list.filter(p=>p.stamps[z.id]).length;
@@ -1513,8 +1519,8 @@ async function renderAdmin(){
 
       <div class="zone-manager">
         <h3>🚦 เปิด/ปิดรับลงทะเบียน</h3>
-        <p class="hint" style="margin-top:-4px;">สถานะปัจจุบัน: <b style="color:${cfg.registrationOpen==='false'?'var(--danger)':'var(--zone-env)'}">${cfg.registrationOpen==='false' ? 'ปิดรับลงทะเบียน' : 'เปิดรับลงทะเบียนปกติ'}</b></p>
-        ${cfg.registrationOpen==='false'
+        <p class="hint" style="margin-top:-4px;">สถานะปัจจุบัน: <b style="color:${isRegClosed?'var(--danger)':'var(--zone-env)'}">${isRegClosed ? 'ปิดรับลงทะเบียน' : 'เปิดรับลงทะเบียนปกติ'}</b></p>
+        ${isRegClosed
           ? `<button class="btn btn-gold btn-block" onclick="toggleRegistration(true)">เปิดรับลงทะเบียนอีกครั้ง</button>`
           : `<button class="btn btn-outline btn-block" onclick="toggleRegistration(false)">ปิดรับลงทะเบียนชั่วคราว</button>`}
         <div id="reg-toggle-status" class="hint"></div>
