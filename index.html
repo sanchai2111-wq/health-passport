@@ -283,7 +283,7 @@ const LOGO_B64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPIAAAEECAYAAAAS
 
 /* ===================== data layer — Google Sheets backend ===================== */
 // วาง Web app URL จาก Google Apps Script (ลงท้ายด้วย /exec) แทนที่ข้อความด้านล่างนี้
-const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzkjEqf45UGTW1Y2RfyliO5R-ByMKpIf1uZ0xqUe1mOGQ2Ejm9xCjdWkQEN8y1PDZQnSA/exec";
+const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyzQ49mrDgZyZpqp56wPNoOXJAIMw8w2VQL3HLR3pmwFSf9yiewJZN9b78F_wykkinrSQ/exec";
 
 // เกียรติบัตรศึกษาดูงาน — ผู้ลงนามและตำแหน่ง (แก้ตรงนี้ได้โดยตรง ไม่กระทบส่วนอื่น)
 const CERT_SIGNER_NAME = "นายธีรพล   สกุลรักษ์";
@@ -300,7 +300,6 @@ const DEFAULT_ZONES = [
 ];
 let ZONES = [];
 let PROJECTS = [];
-let ADMIN_PIN = '2026';
 const AFFIL = ['อสม.','ชุมชน','หน่วยงานราชการ','ประชาชนทั่วไป','ผู้รับผิดชอบโครงการ','เจ้าหน้าที่ตามคำสั่ง','หน่วยงานร่วมจัดนิทรรศการ','ร้านค้า','ตัวแทนหน่วยงาน'];
 
 function apiConfigured(){ return SHEET_API_URL && SHEET_API_URL.indexOf('วางลิงก์') === -1; }
@@ -340,13 +339,6 @@ async function loadProjects(){
   }catch(e){ PROJECTS = []; }
 }
 async function persistProjects(){ await apiPost({action:'saveProjects', data:PROJECTS, pin: state.adminPin}); }
-
-async function loadConfig(){
-  try{
-    const c = await apiGet({action:'getConfig'});
-    if(c && c.adminPin !== undefined && c.adminPin !== '') ADMIN_PIN = String(c.adminPin).trim();
-  }catch(e){}
-}
 
 function emptyStamps(){ const o={}; ZONES.forEach(z=>o[z.id]=false); return o; }
 
@@ -425,15 +417,14 @@ function stopScanner(){
 }
 function goCover(){ stopScanner(); state.view='cover'; state.message=null; render(); }
 
-let zonesLoaded = false, configLoaded = false, projectsLoaded = false;
+let zonesLoaded = false, projectsLoaded = false;
 async function render(){
   if(!apiConfigured()){ return renderSetupNotice(); }
-  // Zones/Projects/PIN rarely change mid-event — fetch once per page load and cache,
+  // Zones/Projects rarely change mid-event — fetch once per page load and cache,
   // instead of re-fetching on every single screen change (this was the main
   // hidden cost: every navigation was paying for extra network round trips).
   if(!zonesLoaded){ await loadZones(); zonesLoaded = true; }
   if(!projectsLoaded){ await loadProjects(); projectsLoaded = true; }
-  if(!configLoaded){ await loadConfig(); configLoaded = true; }
   if(state.view==='cover') return renderCover();
   if(state.view==='register') return renderRegister();
   if(state.view==='registered') return renderRegistered();
@@ -494,7 +485,21 @@ function renderCover(){
 }
 
 /* ---------- registration ---------- */
-function renderRegister(){
+async function renderRegister(){
+  app.innerHTML = `${header(true)}<div class="page"><div class="hint">กำลังตรวจสอบสถานะระบบ...</div></div>`;
+  let cfg = {};
+  try{ cfg = await apiGet({action:'getConfig'}); }catch(e){}
+  if(cfg.registrationOpen === 'false'){
+    app.innerHTML = `
+      ${header(true)}
+      <div class="page" style="text-align:center;">
+        <div style="font-size:40px;">🚧</div>
+        <h2>ปิดรับลงทะเบียนชั่วคราว</h2>
+        <p class="lead">ขณะนี้ผู้ดูแลระบบปิดรับลงทะเบียนใหม่ชั่วคราว กรุณาติดต่อเจ้าหน้าที่หน้างาน</p>
+      </div>
+    `;
+    return;
+  }
   app.innerHTML = `
     ${header(true)}
     <div class="page">
@@ -1314,14 +1319,20 @@ function renderAdminGate(){
       <input type="text" id="pin" placeholder="••••">
       <div id="pin-err"></div>
       <button class="btn btn-primary btn-block" onclick="tryPin()">เข้าสู่ระบบ</button>
-      <div class="hint" style="text-align:center;margin-top:10px;">PIN เริ่มต้นสำหรับทีมจัดงาน: ${ADMIN_PIN}</div>
     </div>
   `;
 }
-function tryPin(){
+async function tryPin(){
   const v = document.getElementById('pin').value.trim();
-  if(String(v) === String(ADMIN_PIN)){ state.adminPin = v; state.view='admin'; render(); }
-  else document.getElementById('pin-err').innerHTML = `<div class="error-box">PIN ไม่ถูกต้อง</div>`;
+  const errBox = document.getElementById('pin-err');
+  errBox.innerHTML = `<div class="hint">กำลังตรวจสอบ...</div>`;
+  try{
+    const r = await apiPost({action:'listAdminPins', pin: v});
+    if(r.error){ errBox.innerHTML = `<div class="error-box">PIN ไม่ถูกต้อง</div>`; return; }
+    state.adminPin = v; state.view='admin'; render();
+  }catch(e){
+    errBox.innerHTML = `<div class="error-box">ตรวจสอบไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}</div>`;
+  }
 }
 const AWARD_CATEGORIES = [
   { id:'innovation', label:'ด้านนวัตกรรมยอดเยี่ยม' },
@@ -1387,6 +1398,7 @@ async function saveAwards(){
 async function renderAdmin(){
   app.innerHTML = `${header(true)}<div class="page"><div class="hint">กำลังโหลดข้อมูล...</div></div>`;
   const list = await listParticipants();
+  const cfg = await apiGet({action:'getConfig'});
   const totals = ZONES.map(z=>{
     // นับคนที่ "ยืนยันโซนนี้สมบูรณ์แล้ว" เท่านั้น (ไม่ใช่แค่เยี่ยมชมบางโครงการ)
     const count = list.filter(p=>p.stamps[z.id]).length;
@@ -1498,8 +1510,109 @@ async function renderAdmin(){
       <div class="toolbar">
         <button class="btn btn-outline" onclick="exportCsv()">⬇️ ดาวน์โหลด CSV</button>
       </div>
+
+      <div class="zone-manager">
+        <h3>🚦 เปิด/ปิดรับลงทะเบียน</h3>
+        <p class="hint" style="margin-top:-4px;">สถานะปัจจุบัน: <b style="color:${cfg.registrationOpen==='false'?'var(--danger)':'var(--zone-env)'}">${cfg.registrationOpen==='false' ? 'ปิดรับลงทะเบียน' : 'เปิดรับลงทะเบียนปกติ'}</b></p>
+        ${cfg.registrationOpen==='false'
+          ? `<button class="btn btn-gold btn-block" onclick="toggleRegistration(true)">เปิดรับลงทะเบียนอีกครั้ง</button>`
+          : `<button class="btn btn-outline btn-block" onclick="toggleRegistration(false)">ปิดรับลงทะเบียนชั่วคราว</button>`}
+        <div id="reg-toggle-status" class="hint"></div>
+      </div>
+
+      <div class="zone-manager">
+        <h3>🗑️ รีเซ็ตข้อมูลทดสอบ</h3>
+        <p class="hint" style="margin-top:-4px;">ล้างผู้ลงทะเบียน+นักศึกษาทั้งหมด และรีเซ็ตเลขที่/ลำดับกลับเป็น 0 — ไม่แตะโซน/โครงการ/PIN/การตั้งค่าเปิดปิดระบบ</p>
+        <button class="btn btn-outline btn-block" style="border-color:var(--danger);color:var(--danger);" onclick="confirmResetAll()">ล้างข้อมูลทดสอบทั้งหมด</button>
+        <div id="reset-all-status" class="hint"></div>
+      </div>
+
+      <div class="zone-manager">
+        <h3>🔑 จัดการ PIN ผู้ดูแลระบบ</h3>
+        <p class="hint" style="margin-top:-4px;">แต่ละคนใช้ PIN ของตัวเองได้ ไม่ต้องใช้ร่วมกัน — ต้องเหลืออย่างน้อย 1 PIN เสมอ</p>
+        <div id="admin-pins-list">กำลังโหลด...</div>
+        <label style="margin-top:12px;">เพิ่ม PIN ใหม่</label>
+        <div class="search-row">
+          <input type="text" id="new-pin" placeholder="4-8 หลัก" style="max-width:120px;">
+          <input type="text" id="new-pin-label" placeholder="ชื่อ/หมายเหตุ (ไม่บังคับ)">
+          <button class="btn btn-primary" onclick="addNewAdminPin()">เพิ่ม</button>
+        </div>
+        <div id="admin-pin-add-status" class="hint"></div>
+      </div>
     </div>
   `;
+  loadAdminPinsList();
+}
+async function toggleRegistration(open){
+  const statusEl = document.getElementById('reg-toggle-status');
+  statusEl.innerHTML = 'กำลังบันทึก...';
+  try{
+    await apiPost({action:'setRegistrationOpen', pin: state.adminPin, open});
+    renderAdmin();
+  }catch(e){
+    statusEl.innerHTML = `<span style="color:var(--danger)">ไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}</span>`;
+  }
+}
+function confirmResetAll(){
+  if(!confirm('ยืนยันล้างข้อมูลทดสอบทั้งหมด?\\n\\nจะลบผู้ลงทะเบียน+นักศึกษาทั้งหมด และรีเซ็ตเลขที่กลับเป็น 0\\n\\nกู้คืนไม่ได้ ทำครั้งเดียวก่อนเริ่มงานจริงเท่านั้น')) return;
+  if(!confirm('ยืนยันอีกครั้ง — แน่ใจจริงๆ ใช่ไหม?')) return;
+  resetAllData();
+}
+async function resetAllData(){
+  const statusEl = document.getElementById('reset-all-status');
+  statusEl.innerHTML = 'กำลังล้างข้อมูล...';
+  try{
+    await apiPost({action:'resetAllData', pin: state.adminPin});
+    statusEl.innerHTML = '<span style="color:var(--zone-env)">ล้างข้อมูลเรียบร้อยแล้ว</span>';
+    setTimeout(renderAdmin, 1200);
+  }catch(e){
+    statusEl.innerHTML = `<span style="color:var(--danger)">ไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}</span>`;
+  }
+}
+async function loadAdminPinsList(){
+  const el = document.getElementById('admin-pins-list');
+  if(!el) return;
+  try{
+    const list = await apiPost({action:'listAdminPins', pin: state.adminPin});
+    if(list.error){ el.innerHTML = `<div class="error-box">${list.error}</div>`; return; }
+    el.innerHTML = list.map(p=>`
+      <div class="zone-row">
+        <span class="zr-name">${p.masked} ${p.label ? '— '+p.label : ''}</span>
+        <span class="zr-actions"><button class="link-btn" style="color:var(--danger)" onclick='removeAdminPinConfirm(${JSON.stringify(p.pin)})'>ลบ</button></span>
+      </div>
+    `).join('') || '<div class="hint">ไม่มี PIN</div>';
+  }catch(e){
+    el.innerHTML = `<div class="error-box">โหลดไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}</div>`;
+  }
+}
+async function addNewAdminPin(){
+  const newPin = document.getElementById('new-pin').value.trim();
+  const label = document.getElementById('new-pin-label').value.trim();
+  const statusEl = document.getElementById('admin-pin-add-status');
+  statusEl.innerHTML = 'กำลังบันทึก...';
+  try{
+    const r = await apiPost({action:'addAdminPin', pin: state.adminPin, newPin, label});
+    if(r.error){ statusEl.innerHTML = `<span style="color:var(--danger)">${r.error}</span>`; return; }
+    document.getElementById('new-pin').value = '';
+    document.getElementById('new-pin-label').value = '';
+    statusEl.innerHTML = '';
+    loadAdminPinsList();
+  }catch(e){
+    statusEl.innerHTML = `<span style="color:var(--danger)">ไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}</span>`;
+  }
+}
+function removeAdminPinConfirm(targetPin){
+  if(!confirm('ยืนยันลบ PIN นี้?')) return;
+  removeAdminPinDo(targetPin);
+}
+async function removeAdminPinDo(targetPin){
+  try{
+    const r = await apiPost({action:'removeAdminPin', pin: state.adminPin, targetPin});
+    if(r.error){ alert(r.error); return; }
+    loadAdminPinsList();
+  }catch(e){
+    alert('ไม่สำเร็จ: '+((e&&e.message)||'ไม่ทราบสาเหตุ'));
+  }
 }
 function filterAdminTable(){
   const q = document.getElementById('admin-search').value.toLowerCase();
