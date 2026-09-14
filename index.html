@@ -304,24 +304,41 @@ const AFFIL = ['อสม.','ชุมชน','หน่วยงานราช
 
 function apiConfigured(){ return SHEET_API_URL && SHEET_API_URL.indexOf('วางลิงก์') === -1; }
 
+// ลองซ้ำอัตโนมัติ 1 ครั้งถ้าเน็ตสะดุดชั่วครู่ (พบบ่อยตอนคนเยอะแย่งใช้ WiFi/เน็ตมือถือพร้อมกันในงาน)
+// ก่อนจะถือว่าล้มเหลวจริง — "unknown action: undefined" มักเป็นสัญญาณว่า body ส่งไปไม่ครบเพราะเน็ตกระตุก
+async function withRetry_(fn){
+  try{
+    return await fn();
+  }catch(e){
+    if(/unknown action/i.test(e.message) || /fetch/i.test(e.message)){
+      await new Promise(r=>setTimeout(r, 500));
+      return await fn();
+    }
+    throw e;
+  }
+}
 async function apiGet(params){
-  const url = new URL(SHEET_API_URL);
-  Object.keys(params).forEach(k=>url.searchParams.set(k, params[k]));
-  url.searchParams.set('_ts', Date.now()); // cache-bust: browsers/proxies otherwise reuse a stale GET response for the same URL
-  const res = await fetch(url.toString(), { cache: 'no-store' });
-  const data = await res.json();
-  if(data && data.error) throw new Error(data.error); // surface server-side errors instead of pretending success
-  return data;
+  return withRetry_(async ()=>{
+    const url = new URL(SHEET_API_URL);
+    Object.keys(params).forEach(k=>url.searchParams.set(k, params[k]));
+    url.searchParams.set('_ts', Date.now()); // cache-bust: browsers/proxies otherwise reuse a stale GET response for the same URL
+    const res = await fetch(url.toString(), { cache: 'no-store' });
+    const data = await res.json();
+    if(data && data.error) throw new Error(data.error); // surface server-side errors instead of pretending success
+    return data;
+  });
 }
 async function apiPost(body){
-  const res = await fetch(SHEET_API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // text/plain avoids a CORS preflight on Apps Script
-    body: JSON.stringify(body),
+  return withRetry_(async ()=>{
+    const res = await fetch(SHEET_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // text/plain avoids a CORS preflight on Apps Script
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if(data && data.error) throw new Error(data.error);
+    return data;
   });
-  const data = await res.json();
-  if(data && data.error) throw new Error(data.error);
-  return data;
 }
 
 async function loadZones(){
@@ -415,16 +432,32 @@ function stopScanner(){
     state.html5qr = null;
   }
 }
+// ปุ่มฉุกเฉินกรณีกล้องค้างหรือปุ่มกดไม่ตอบสนอง — ปลดล็อกทุกตัวแปรค้างและเปิดกล้องใหม่ทั้งหมด
+// โดยไม่ต้องโหลดหน้าเว็บใหม่ (เร็วกว่าและไม่เสียสถานะโครงการ/โซนที่เลือกไว้)
+function forceResetScanner(isZoneConfirm){
+  scanLock = false;
+  zoneConfirmLock = false;
+  stopScanner();
+  if(isZoneConfirm) startScanner(handleZoneConfirmScan);
+  else startScanner();
+}
 function goCover(){ stopScanner(); state.view='cover'; state.message=null; render(); }
 
-let zonesLoaded = false, projectsLoaded = false;
+let zonesLoaded = false, projectsLoaded = false, regStatusLoaded = false, cachedRegOpen = true;
 async function render(){
   if(!apiConfigured()){ return renderSetupNotice(); }
-  // Zones/Projects rarely change mid-event — fetch once per page load and cache,
-  // instead of re-fetching on every single screen change (this was the main
-  // hidden cost: every navigation was paying for extra network round trips).
+  // Zones/Projects/สถานะเปิดรับลงทะเบียน แทบไม่เปลี่ยนกลางงาน — fetch ครั้งเดียวต่อการเปิดแอพแล้ว cache ไว้
+  // แทนที่จะยิง API ซ้ำทุกครั้งที่เข้าหน้าลงทะเบียน (จุดนี้เคยทำให้หน้าแรกโหลดช้า เพราะรอ config
+  // ทุกครั้งก่อนแสดงฟอร์ม)
   if(!zonesLoaded){ await loadZones(); zonesLoaded = true; }
   if(!projectsLoaded){ await loadProjects(); projectsLoaded = true; }
+  if(!regStatusLoaded){
+    try{
+      const cfg = await apiGet({action:'getConfig'});
+      cachedRegOpen = !(cfg.registrationOpen === 'false' || cfg.registrationOpen === false);
+    }catch(e){ /* เช็คไม่ได้ก็ถือว่าเปิดไว้ก่อน ดีกว่าปิดกั้นคนลงทะเบียนโดยไม่จำเป็น */ }
+    regStatusLoaded = true;
+  }
   if(state.view==='cover') return renderCover();
   if(state.view==='register') return renderRegister();
   if(state.view==='registered') return renderRegistered();
@@ -485,14 +518,8 @@ function renderCover(){
 }
 
 /* ---------- registration ---------- */
-async function renderRegister(){
-  app.innerHTML = `${header(true)}<div class="page"><div class="hint">กำลังตรวจสอบสถานะระบบ...</div></div>`;
-  let cfg = {};
-  try{ cfg = await apiGet({action:'getConfig'}); }catch(e){}
-  // Google Sheets มักแปลงข้อความ "false"/"true" ในเซลล์เป็นบูลีนจริงให้อัตโนมัติ
-  // ต้องเช็คทั้งสองแบบ (ค่าที่เป็น string และที่ถูกแปลงเป็น boolean แล้ว) เหมือนฟิลด์ redeemed
-  const isRegClosed = cfg.registrationOpen === 'false' || cfg.registrationOpen === false;
-  if(isRegClosed){
+function renderRegister(){
+  if(!cachedRegOpen){
     app.innerHTML = `
       ${header(true)}
       <div class="page" style="text-align:center;">
@@ -695,7 +722,14 @@ async function doLookupByName(inputId, resultId, targetView){
 async function selectFoundParticipant(uid, targetView){
   state.lastUid = uid;
   state.pendingParticipant = null;
-  if(targetView==='redeem'){ await prepareRedeem(uid); return; }
+  if(targetView==='redeem'){
+    await prepareRedeem(uid);
+    // ผลลัพธ์ของ prepareRedeem แสดงที่กล่องด้านบน (สำหรับกรอกรหัสมือ) คนละจุดกับผลค้นหาชื่อ
+    // ที่เพิ่งกดเลือก — เลื่อนจอให้เห็นผลทันที ไม่งั้นข้อความอาจอยู่นอกจอ มองไม่เห็นเลย
+    const resultBox = document.getElementById('redeem-result');
+    if(resultBox) resultBox.scrollIntoView({ behavior:'smooth', block:'center' });
+    return;
+  }
   state.view = targetView || 'registered';
   render();
 }
@@ -728,6 +762,7 @@ function renderScan(){
             <button class="btn btn-primary" onclick="manualStamp()">ประทับตรา</button>
           </div>
         </div>
+        <button class="btn btn-outline btn-block" style="margin-top:14px;" onclick="forceResetScanner()">🔄 กล้อง/ปุ่มค้าง? กดรีเซ็ตตรงนี้</button>
       ` : `<div class="hint">เลือกโครงการด้านบนเพื่อเริ่มใช้กล้องสแกน</div>`}
     </div>
   `;
@@ -829,6 +864,7 @@ function renderZoneConfirm(){
             <button class="btn btn-primary" onclick="manualZoneConfirm()">ตรวจสอบ</button>
           </div>
         </div>
+        <button class="btn btn-outline btn-block" style="margin-top:14px;" onclick="forceResetScanner(true)">🔄 กล้อง/ปุ่มค้าง? กดรีเซ็ตตรงนี้</button>
       ` : `<div class="hint">เลือกโซนด้านบนเพื่อเริ่มใช้กล้องสแกน</div>`}
     </div>
   `;
