@@ -675,7 +675,7 @@ function renderLookup(){
     <div class="page">
       <div class="eyebrow">ตรวจสอบบัตรผ่าน</div>
       <h2>ค้นหาด้วยรหัสประจำตัว</h2>
-      <p class="lead">กรอกรหัส เช่น KPT2026-001 เพื่อดู QR และตราประทับที่สะสมได้</p>
+      <p class="lead">กรอกรหัส เช่น KPT2026-001 (ผู้ร่วมงานทั่วไป) หรือ SV2026-0001 (นักเรียน/นักศึกษาศึกษาดูงาน) ได้ทั้ง 2 แบบ</p>
       <label>รหัสประจำตัว</label>
       <input type="text" id="look-uid" placeholder="KPT2026-001" style="text-transform:uppercase;">
       <div id="look-result"></div>
@@ -688,12 +688,25 @@ function renderLookup(){
   `;
 }
 async function doLookup(){
-  const uid = document.getElementById('look-uid').value.trim();
+  const uid = document.getElementById('look-uid').value.trim().toUpperCase();
   const box = document.getElementById('look-result');
   if(!uid){ box.innerHTML = `<div class="error-box">กรุณากรอกรหัสประจำตัว</div>`; return; }
   box.innerHTML = `<div class="hint">กำลังค้นหา...</div>`;
+  // รหัสนักเรียน/นักศึกษาศึกษาดูงานขึ้นต้นด้วย SV คนละชุดข้อมูลกับผู้ร่วมงานทั่วไป (KPT)
+  // ต้องค้นคนละจุดและแสดงผลคนละแบบ (ไม่มีสแตมป์โซน มีแต่สถานะส่งแบบสะท้อน)
+  if(uid.startsWith('SV')){
+    try{
+      const r = await apiGet({action:'getStudyVisitor', code: uid});
+      if(!r){ box.innerHTML = `<div class="error-box">ไม่พบเลขทะเบียนนี้ ตรวจตัวพิมพ์ใหญ่-เล็กอีกครั้ง</div>`; return; }
+      state.studyRecord = r;
+      renderReflectForm(r);
+    }catch(e){
+      box.innerHTML = `<div class="error-box">ค้นหาไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}</div>`;
+    }
+    return;
+  }
   const p = await getParticipant(uid);
-  if(!p){ box.innerHTML = `<div class="error-box">ไม่พบข้อมูลรหัส ${uid.toUpperCase()}</div>`; return; }
+  if(!p){ box.innerHTML = `<div class="error-box">ไม่พบข้อมูลรหัส ${uid}</div>`; return; }
   state.lastUid = p.uid;
   state.pendingParticipant = null;
   state.view='registered';
@@ -708,13 +721,25 @@ async function doLookupByName(inputId, resultId, targetView){
   if(!q){ box.innerHTML = `<div class="error-box">กรุณาพิมพ์ชื่อหรือนามสกุล</div>`; return; }
   box.innerHTML = `<div class="hint">กำลังค้นหา...</div>`;
   try{
-    const list = await apiGet({action:'searchParticipantsByName', q});
-    if(!list.length){ box.innerHTML = `<div class="error-box">ไม่พบชื่อที่ตรงกัน ลองพิมพ์สั้นลงหรือตรวจตัวสะกดอีกครั้ง</div>`; return; }
-    box.innerHTML = list.map(p => `
+    // หน้า "บัตรผ่านของฉัน" มีทั้งผู้ร่วมงานทั่วไปและนักเรียน/นักศึกษาศึกษาดูงาน ต้องค้นทั้ง 2 แหล่ง
+    // พร้อมกัน ส่วนเมนูอื่น (รับของรางวัล) ค้นเฉพาะผู้ร่วมงานทั่วไปเหมือนเดิม เพราะนักศึกษาไม่เกี่ยวกับของรางวัลนี้
+    const searchStudyToo = targetView === 'registered';
+    const [participants, studyVisitors] = await Promise.all([
+      apiGet({action:'searchParticipantsByName', q}),
+      searchStudyToo ? apiGet({action:'searchStudyVisitorsByName', q}).catch(()=>[]) : Promise.resolve([]),
+    ]);
+    if(!participants.length && !studyVisitors.length){ box.innerHTML = `<div class="error-box">ไม่พบชื่อที่ตรงกัน ลองพิมพ์สั้นลงหรือตรวจตัวสะกดอีกครั้ง</div>`; return; }
+    const participantButtons = participants.map(p => `
       <button class="role-card" style="margin-top:8px;" onclick='selectFoundParticipant(${JSON.stringify(p.uid)}, ${JSON.stringify(targetView)})'>
         <div><div class="role-title">${p.name}</div><div class="role-desc">${p.uid} · ${p.phone}</div></div>
       </button>
     `).join('');
+    const studyButtons = studyVisitors.map(r => `
+      <button class="role-card" style="margin-top:8px;" onclick='selectFoundStudyVisitor(${JSON.stringify(r.code)})'>
+        <div><div class="role-title">${r.name}</div><div class="role-desc">${r.code} · ${r.institution} (นักศึกษาดูงาน)</div></div>
+      </button>
+    `).join('');
+    box.innerHTML = participantButtons + studyButtons;
   }catch(e){
     box.innerHTML = `<div class="error-box">ค้นหาไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}</div>`;
   }
