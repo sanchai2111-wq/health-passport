@@ -446,17 +446,20 @@ function goCover(){ stopScanner(); state.view='cover'; state.message=null; rende
 let zonesLoaded = false, projectsLoaded = false, regStatusLoaded = false, cachedRegOpen = true;
 async function render(){
   if(!apiConfigured()){ return renderSetupNotice(); }
-  // Zones/Projects/สถานะเปิดรับลงทะเบียน แทบไม่เปลี่ยนกลางงาน — fetch ครั้งเดียวต่อการเปิดแอพแล้ว cache ไว้
-  // แทนที่จะยิง API ซ้ำทุกครั้งที่เข้าหน้าลงทะเบียน (จุดนี้เคยทำให้หน้าแรกโหลดช้า เพราะรอ config
-  // ทุกครั้งก่อนแสดงฟอร์ม)
-  if(!zonesLoaded){ await loadZones(); zonesLoaded = true; }
-  if(!projectsLoaded){ await loadProjects(); projectsLoaded = true; }
-  if(!regStatusLoaded){
+  // รวมโซน+โครงการ+ค่าตั้งค่าเป็นคำขอเดียวตอนเปิดแอพครั้งแรก (เดิมยิง 3 คำขอเรียงกัน แต่ละครั้ง
+  // Apps Script อาจหน่วงหลายวินาทีโดยไม่แน่นอน ทำให้หน้าแรกโหลดช้ารวมกันได้เป็นสิบ ๆ วินาที)
+  if(!zonesLoaded || !projectsLoaded || !regStatusLoaded){
     try{
-      const cfg = await apiGet({action:'getConfig'});
-      cachedRegOpen = !(cfg.registrationOpen === 'false' || cfg.registrationOpen === false);
-    }catch(e){ /* เช็คไม่ได้ก็ถือว่าเปิดไว้ก่อน ดีกว่าปิดกั้นคนลงทะเบียนโดยไม่จำเป็น */ }
-    regStatusLoaded = true;
+      const boot = await apiGet({action:'getBootstrap'});
+      ZONES = (Array.isArray(boot.zones) && boot.zones.length) ? boot.zones : DEFAULT_ZONES.map(z=>({...z}));
+      PROJECTS = Array.isArray(boot.projects) ? boot.projects : [];
+      cachedRegOpen = !(boot.config.registrationOpen === 'false' || boot.config.registrationOpen === false);
+    }catch(e){
+      ZONES = DEFAULT_ZONES.map(z=>({...z}));
+      PROJECTS = [];
+      // เช็คไม่ได้ก็ถือว่าเปิดไว้ก่อน ดีกว่าปิดกั้นคนลงทะเบียนโดยไม่จำเป็น
+    }
+    zonesLoaded = true; projectsLoaded = true; regStatusLoaded = true;
   }
   if(state.view==='cover') return renderCover();
   if(state.view==='register') return renderRegister();
