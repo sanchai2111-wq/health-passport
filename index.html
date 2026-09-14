@@ -735,20 +735,35 @@ function renderScan(){
 }
 function pickProject(code){ stopScanner(); state.project=code; renderScan(); }
 
-function startScanner(onScan){
+async function startScanner(onScan){
   stopScanner();
   const cb = onScan || handleScanResult;
   const statusEl = ()=>document.getElementById('scan-status');
+  // ขนาดกรอบสแกนคงที่ 230px บางเครื่อง (จอแคบ/กล้องความละเอียดต่ำ) ทำให้กรอบใหญ่กว่าภาพจริง
+  // สแกนไม่ติดเลยแม้กล้องเปิดปกติ — คำนวณขนาดกรอบใหม่ให้สัมพันธ์กับพื้นที่จอเสมอ
+  const qrboxFn = (viewfinderWidth, viewfinderHeight) => {
+    const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+    const size = Math.floor(minEdge * 0.7);
+    return { width: size, height: size };
+  };
+  const config = { fps: 10, qrbox: qrboxFn };
+  const onSuccess = (decodedText) => { cb(decodedText.trim()); };
+  const onFailure = () => {};
   try{
     state.html5qr = new Html5Qrcode("reader");
-    state.html5qr.start(
-      { facingMode:"environment" },
-      { fps:10, qrbox:230 },
-      (decodedText)=>{ cb(decodedText.trim()); },
-      ()=>{}
-    ).catch(err=>{ if(statusEl()) statusEl().innerHTML = `ไม่สามารถเปิดกล้องได้ — ใช้ช่องกรอกรหัสด้านล่างแทน`; });
+    // เลือกกล้องแบบระบุ deviceId ตรงๆ (เชื่อถือได้กว่า facingMode อย่างเดียว ซึ่งบางรุ่น/บางเบราว์เซอร์
+    // เพิกเฉยค่านี้หรือเลือกกล้องผิดตัวโดยไม่แจ้งเตือน ทำให้ภาพจากกล้องขึ้นปกติแต่สแกนไม่เคยติดเลย)
+    let cameraId = { facingMode: "environment" };
+    try{
+      const cameras = await Html5Qrcode.getCameras();
+      if(cameras && cameras.length){
+        const back = cameras.find(c => /back|rear|environment/i.test(c.label)) || cameras[cameras.length - 1];
+        cameraId = back.id;
+      }
+    }catch(camErr){ /* enumerate ไม่ได้ก็ fallback ไปใช้ facingMode ตามเดิม */ }
+    await state.html5qr.start(cameraId, config, onSuccess, onFailure);
   }catch(e){
-    if(statusEl()) statusEl().innerHTML = `ไม่สามารถเปิดกล้องได้ — ใช้ช่องกรอกรหัสด้านล่างแทน`;
+    if(statusEl()) statusEl().innerHTML = `ไม่สามารถเปิดกล้องได้ (${(e&&e.message)||'ไม่ทราบสาเหตุ'}) — ใช้ช่องกรอกรหัสด้านล่างแทน`;
   }
 }
 function manualStamp(){
@@ -761,16 +776,19 @@ async function handleScanResult(uid){
   scanLock = true;
   const p = await getParticipant(uid);
   if(!p){
-    showStampToast(false, 'ไม่พบรหัส ' + uid.toUpperCase(), null);
-    setTimeout(()=>{scanLock=false;}, 1200);
+    showStampToast(false, 'ไม่พบรหัส ' + uid.toUpperCase(), null, null, ()=>{scanLock=false;});
     return;
   }
   const project = PROJECTS.find(pj=>pj.code===state.project);
+  if(!project){
+    // กันปลดล็อกค้างถาวร — เคยเกิดกรณีนี้ได้ถ้าโครงการที่เลือกไว้หายไปจากลิสต์กลางคัน
+    showStampToast(false, 'ไม่พบโครงการที่เลือกไว้ กรุณาเลือกโครงการใหม่อีกครั้ง', null, null, ()=>{scanLock=false;});
+    return;
+  }
   const zone = ZONES.find(z=>z.id===project.zoneId);
   const already = p.stamps[project.code];
   if(already){
-    showStampToast(true, `${p.name} — เคยเยี่ยมชมโครงการนี้แล้ว`, zone, p);
-    setTimeout(()=>{scanLock=false;}, 1600);
+    showStampToast(true, `${p.name} — เคยเยี่ยมชมโครงการนี้แล้ว`, zone, p, ()=>{scanLock=false; try{ if(state.html5qr) state.html5qr.resume(); }catch(e){} });
     return;
   }
   // สแกนที่บูธโครงการ = แค่ "สแตมป์รอผล" ยืนยันว่ามาเยี่ยมชมจริง ยังไม่มีผลต่อรางวัลใดๆ
@@ -778,11 +796,10 @@ async function handleScanResult(uid){
   pauseScanner();
   try{
     const r = await apiPost({action:'stampProject', uid, projectCode: project.code});
-    showStampToast(true, r.alreadyStamped ? `เคยเยี่ยมชมโครงการนี้แล้ว` : `บันทึกการเยี่ยมชม "${project.name}" สำเร็จ (ยังไม่มีผลจนกว่าจะยืนยันที่จุดเจ้าหน้าที่ประจำโซน)`, zone, r.participant);
+    showStampToast(true, r.alreadyStamped ? `เคยเยี่ยมชมโครงการนี้แล้ว` : `บันทึกการเยี่ยมชม "${project.name}" สำเร็จ (ยังไม่มีผลจนกว่าจะยืนยันที่จุดเจ้าหน้าที่ประจำโซน)`, zone, r.participant, resumeScannerAfterVote);
   }catch(e){
-    showStampToast(false, `บันทึกไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}`, zone);
+    showStampToast(false, `บันทึกไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}`, zone, null, resumeScannerAfterVote);
   }
-  resumeScannerAfterVote();
 }
 
 function pauseScanner(){ try{ if(state.html5qr) state.html5qr.pause(true); }catch(e){} }
@@ -830,25 +847,21 @@ async function handleZoneConfirmScan(uid){
   try{
     const progress = await apiGet({action:'getZoneProgress', uid, zoneId: zone.id});
     if(progress.error){
-      showStampToast(false, progress.error, zone);
-      setTimeout(()=>{zoneConfirmLock=false;}, 1400);
+      showStampToast(false, progress.error, zone, null, ()=>{zoneConfirmLock=false;});
       return;
     }
     if(progress.alreadyConfirmed){
-      showStampToast(true, `${progress.name} — ยืนยันโซนนี้ไปแล้ว`, zone);
-      setTimeout(()=>{zoneConfirmLock=false;}, 1600);
+      showStampToast(true, `${progress.name} — ยืนยันโซนนี้ไปแล้ว`, zone, null, ()=>{zoneConfirmLock=false;});
       return;
     }
     if(!progress.eligible){
-      showStampToast(false, `${progress.name} เยี่ยมชมได้ ${progress.visitedCount}/${progress.total} โครงการ (ต้องการอย่างน้อย ${progress.threshold}) — ยังยืนยันไม่ได้`, zone);
-      setTimeout(()=>{zoneConfirmLock=false;}, 2200);
+      showStampToast(false, `${progress.name} เยี่ยมชมได้ ${progress.visitedCount}/${progress.total} โครงการ (ต้องการอย่างน้อย ${progress.threshold}) — ยังยืนยันไม่ได้`, zone, null, ()=>{zoneConfirmLock=false;});
       return;
     }
     pauseScanner();
     renderZoneVotePicker(progress, zone);
   }catch(e){
-    showStampToast(false, `ตรวจสอบไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}`, zone);
-    setTimeout(()=>{zoneConfirmLock=false;}, 1600);
+    showStampToast(false, `ตรวจสอบไม่สำเร็จ: ${(e&&e.message)||'ไม่ทราบสาเหตุ'}`, zone, null, ()=>{zoneConfirmLock=false;});
   }
 }
 function renderZoneVotePicker(progress, zone){
@@ -895,7 +908,7 @@ async function submitZoneConfirm(uid, zoneId, votedProjectCode){
   zoneConfirmLock = false;
 }
 
-function showStampToast(ok, text, zone, p){
+function showStampToast(ok, text, zone, p, onDone){
   const overlay = document.createElement('div');
   overlay.className = 'stamp-overlay';
   const n = p ? stampCount(p) : 0;
@@ -909,7 +922,10 @@ function showStampToast(ok, text, zone, p){
     <div class="stamp-caption">${text}</div>
   ` : `<div class="stamp-caption">⚠️ ${text}</div>`;
   document.body.appendChild(overlay);
-  setTimeout(()=>overlay.remove(), 1500);
+  // เพิ่มเวลาแสดงผลให้อ่านทัน (จากเดิม 1.5 วิ สั้นเกินไปสำหรับข้อความยาว) และ "รอให้ toast ปิดก่อน
+  // แล้วค่อยปลดล็อกให้สแกนต่อได้" เพื่อกันกล้องสแกนซ้ำ QR เดิมที่ยังอยู่ในเฟรมทันทีที่ปลดล็อกเร็วเกินไป
+  const duration = ok ? 2600 : 3200;
+  setTimeout(()=>{ overlay.remove(); if(onDone) onDone(); }, duration);
 }
 
 /* ---------- redemption desk ---------- */
@@ -1353,11 +1369,9 @@ const AWARD_CATEGORIES = [
 // สแกนที่บูธโครงการ = โหวตในตัวอยู่แล้ว จึงมีคะแนนโหวตชุดเดียว (ไม่แยกตามด้าน) — คณะกรรมการ
 // เลือกผู้ชนะทั้ง 5 ด้านเองจากอันดับคะแนนโหวตชุดนี้ โดย "ขวัญใจมหาชน" ตั้งค่าเริ่มต้นเป็น
 // โครงการคะแนนสูงสุดให้อัตโนมัติ ส่วนอีก 4 ด้านปล่อยว่างให้กรรมการเลือกเอง
-async function awardsSectionHtml(voteTallyOverall){
-  let saved = [];
-  try{ saved = await apiGet({action:'getAwards'}); }catch(e){}
+function awardsSectionHtml(voteTallyOverall, saved){
   const savedMap = {};
-  saved.forEach(a=>{ savedMap[a.category] = a.projectCode; });
+  (saved||[]).forEach(a=>{ savedMap[a.category] = a.projectCode; });
 
   const ranked = voteTallyOverall.slice().sort((a,b)=>b.votes-a.votes);
   const options = ranked.map(pj=>`<option value="${pj.code}" data-name="${pj.name.replace(/"/g,'&quot;')}">${pj.code} — ${pj.name} (${pj.votes} โหวต)</option>`).join('');
@@ -1400,8 +1414,13 @@ async function saveAwards(){
 }
 async function renderAdmin(){
   app.innerHTML = `${header(true)}<div class="page"><div class="hint">กำลังโหลดข้อมูล...</div></div>`;
-  const list = await listParticipants();
-  const cfg = await apiGet({action:'getConfig'});
+  // รันพร้อมกันแทนการรอทีละอัน (จากเดิมรอ listParticipants → getConfig → getAwards เรียงกัน
+  // ทำให้หน้าแอดมินช้ามาก เพราะแต่ละครั้งที่เรียก Apps Script มีความหน่วงในตัวของมันเองอยู่แล้ว)
+  const [list, cfg, savedAwards] = await Promise.all([
+    listParticipants(),
+    apiGet({action:'getConfig'}),
+    apiGet({action:'getAwards'}).catch(()=>[]),
+  ]);
   // Google Sheets มักแปลงข้อความ "false"/"true" ในเซลล์เป็นบูลีนจริงให้อัตโนมัติ
   // ต้องเช็คทั้งสองแบบ (ค่าที่เป็น string และที่ถูกแปลงเป็น boolean แล้ว) เหมือนฟิลด์ redeemed
   const isRegClosed = cfg.registrationOpen === 'false' || cfg.registrationOpen === false;
@@ -1453,7 +1472,7 @@ async function renderAdmin(){
         </div>
       </div>
 
-      ${await awardsSectionHtml(voteTally)}
+      ${awardsSectionHtml(voteTally, savedAwards)}
 
       <div class="zone-manager">
         <h3>จัดการโซนกิจกรรม (เจ้าหน้าที่ประจำโซน)</h3>
